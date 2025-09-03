@@ -1,3 +1,3 @@
-# deskdoodles
+# DeskDoodles
 
 Doodle on a desk?
