@@ -1,19 +1,70 @@
 name: deskdoodles
 description: "Doodle on a desk?"
-publish_to: 'none'
-version: 0.1.0
+publish_to: none
+version: 0.1.0+0
 
 environment:
   sdk: ^3.9.0
+  flutter: 3.35.3
 
 dependencies:
+  auto_route:
+  fast_immutable_collections: ^11.0.4
   flutter:
     sdk: flutter
+  flutter_hooks: ^0.21.3+1
+  flutter_localizations:
+    sdk: flutter
+  flutter_web_plugins:
+    sdk: flutter
+  freezed_annotation: ^3.1.0
+  hooks_riverpod: ^3.0.0-dev.18
+  intl: ^0.20.2
+  melos: ^7.1.0
+  riverpod_annotation: ^3.0.0-dev.18
 
 dev_dependencies:
+  auto_route_generator:
+  build_runner: ^2.8.0
+  custom_lint: ^0.8.1
+  flutter_lints: ^6.0.0
   flutter_test:
     sdk: flutter
-  flutter_lints: ^5.0.0
+  freezed: ^3.2.2
+  freezed_lint: ^0.0.11
+  json_serializable: ^6.11.1
+  riverpod_generator: ^3.0.0-dev.18
+  riverpod_lint: ^3.0.0-dev.18
+  very_good_analysis: ^9.0.0
+
+dependency_overrides:
+  auto_route:
+    git:
+      url: https://github.com/lishaduck/auto_route_library.git
+      ref: analyzer-8
+      path: auto_route
+  auto_route_generator:
+    git:
+      url: https://github.com/lishaduck/auto_route_library.git
+      ref: analyzer-8
+      path: auto_route_generator
+
+  test_api: 0.7.7
 
 flutter:
   uses-material-design: true
+
+  generate: true
+
+melos:
+  useRootAsPackage: true
+
+  command:
+    bootstrap:
+      hooks:
+        post: melos run gen
+
+  scripts:
+    gen:
+      description: run build_runner
+      exec: dart run build_runner build

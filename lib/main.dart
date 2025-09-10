@@ -1,20 +1,14 @@
-import 'package:flutter/material.dart';
+/// This library contains the app's primary entrypoint.
+library;
 
-void main() {
-  runApp(const MainApp());
-}
+import 'package:flutter/widgets.dart';
 
-class MainApp extends StatelessWidget {
-  const MainApp({super.key});
+import 'src/app/app.dart';
+import 'src/app/bootstrap.dart';
 
-  @override
-  Widget build(BuildContext context) {
-    return const MaterialApp(
-      home: Scaffold(
-        body: Center(
-          child: Text('Hello World!'),
-        ),
-      ),
-    );
-  }
+/// The primary entrypoint of the app.
+///
+/// This uses [Bootstrap] to launch [App].
+Future<void> main() async {
+  await const App().bootstrap((runApp: runApp));
 }

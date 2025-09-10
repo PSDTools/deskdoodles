@@ -1,0 +1,52 @@
+targets:
+  $default:
+    sources:
+      include:
+        - lib/**.dart
+        # required
+        - pubspec.*
+        # synthetic files
+        - $package$
+        - lib/$lib$
+    builders:
+      auto_route_generator:
+        # configs for the @RoutePage() generator
+        options:
+          enable_cached_builds: true
+        generate_for:
+          - lib/src/features/*/presentation/*/*_page.dart
+          - lib/src/app/wrapper_page.dart
+      auto_route_generator:auto_router_generator:
+        # configs for the @AutoRouterConfig() generator
+        options:
+          enable_cached_builds: true
+        generate_for:
+          - lib/src/app/router.dart
+      freezed:
+        # configs for the @freezed generator
+        generate_for:
+          - lib/src/utils/**.dart
+          - lib/src/features/*/domain/*_entity.dart
+          - lib/src/features/*/domain/*_model.dart
+          - test/helpers/accessibility.dart
+        options:
+          map: false
+          when: false
+      json_serializable:
+        # configs for the @JsonSerializable generator
+        generate_for:
+          - lib/src/utils/**.dart
+          - lib/src/features/*/domain/*_entity.dart
+          - lib/src/features/*/domain/*_model.dart
+        options:
+          checked: true
+      riverpod_generator:
+        # configs for the @riverpod generator
+        generate_for:
+          - lib/src/utils/**.dart
+          - lib/src/features/*/data/*_repository.dart
+          - lib/src/features/*/application/*_service.dart
+      source_gen:combining_builder:
+        options:
+          ignore_for_file:
+            - type=lint
