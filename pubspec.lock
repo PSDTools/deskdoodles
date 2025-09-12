@@ -207,10 +207,10 @@ packages:
     dependency: transitive
     description:
       name: code_builder
-      sha256: "0ec10bf4a89e4c613960bf1e8b42c64127021740fb21640c29c909826a5eea3e"
+      sha256: "11654819532ba94c34de52ff5feb52bd81cba1de00ef2ed622fd50295f9d4243"
       url: "https://pub.dev"
     source: hosted
-    version: "4.10.1"
+    version: "4.11.0"
   collection:
     dependency: transitive
     description:
@@ -353,10 +353,10 @@ packages:
     dependency: transitive
     description:
       name: flutter_riverpod
-      sha256: ec61a88ba326719257d06ca76e32c5e83c91789bf0c2665cff0a304b7aad7dfd
+      sha256: ca2480512a8e840291325249f4857e363ffa5d1b77b132e189c9313a9d9fb9e0
       url: "https://pub.dev"
     source: hosted
-    version: "3.0.0-dev.18"
+    version: "3.0.0"
   flutter_test:
     dependency: "direct dev"
     description: flutter
@@ -371,10 +371,10 @@ packages:
     dependency: "direct dev"
     description:
       name: freezed
-      sha256: b6445822d9b3961a9d0f3def0b4297bd77314bdbfd1de0b62eaca27c93e9bc0f
+      sha256: "13065f10e135263a4f5a4391b79a8efc5fb8106f8dd555a9e49b750b45393d77"
       url: "https://pub.dev"
     source: hosted
-    version: "3.2.2"
+    version: "3.2.3"
   freezed_annotation:
     dependency: "direct main"
     description:
@@ -387,10 +387,10 @@ packages:
     dependency: "direct dev"
     description:
       name: freezed_lint
-      sha256: "278609d594dbf48303d09ba60b75a717a546e8529efce9997f3a0a4e0896ae89"
+      sha256: "6b2aecc7304d8ecffb7a50fc63f31df0aae748af58184d287e6268c11c3520cd"
       url: "https://pub.dev"
     source: hosted
-    version: "0.0.11"
+    version: "0.0.12"
   frontend_server_client:
     dependency: transitive
     description:
@@ -419,10 +419,10 @@ packages:
     dependency: "direct main"
     description:
       name: hooks_riverpod
-      sha256: f675c934dae452a2cf37f81db7d8b0da8384f5685d4abd64799cb086e19e3a0e
+      sha256: ef5b42bc912994283da7cc34cae2ec64842e3fbd7722525f749f07688f4ec7b6
       url: "https://pub.dev"
     source: hosted
-    version: "3.0.0-dev.18"
+    version: "3.0.0"
   hotreloader:
     dependency: transitive
     description:
@@ -499,10 +499,10 @@ packages:
     dependency: transitive
     description:
       name: leak_tracker
-      sha256: "8dcda04c3fc16c14f48a7bb586d4be1f0d1572731b6d81d51772ef47c02081e0"
+      sha256: "33e2e26bdd85a0112ec15400c8cbffea70d0f9c3407491f672a2fad47915e2de"
       url: "https://pub.dev"
     source: hosted
-    version: "11.0.1"
+    version: "11.0.2"
   leak_tracker_flutter_testing:
     dependency: transitive
     description:
@@ -564,10 +564,10 @@ packages:
     dependency: "direct main"
     description:
       name: melos
-      sha256: "44b2cff0bf2f8bcd88750433220f1b7420403175e016b3fcb05b0359164f9725"
+      sha256: "7edaa77edb2017dd0c05b5e1baa501965903c5d6f314dfc096df36ada5275199"
       url: "https://pub.dev"
     source: hosted
-    version: "7.1.0"
+    version: "7.1.1"
   meta:
     dependency: transitive
     description:
@@ -596,10 +596,10 @@ packages:
     dependency: transitive
     description:
       name: mustache_template
-      sha256: a46e26f91445bfb0b60519be280555b06792460b27b19e2b19ad5b9740df5d1c
+      sha256: d9aa84d114368b7f1727b7014b85bb0b234daeafe1518824c82d32703b3964f6
       url: "https://pub.dev"
     source: hosted
-    version: "2.0.0"
+    version: "2.0.1"
   node_preamble:
     dependency: transitive
     description:
@@ -684,42 +684,42 @@ packages:
     dependency: transitive
     description:
       name: riverpod
-      sha256: a64ca86e63b021b3e4aeb232cfba60364bf28303b697a3c334aeb6ac882c85a6
+      sha256: "135723ec44dfba141bc4696224048a408336e794228a0117439e7ad0a8be6d05"
       url: "https://pub.dev"
     source: hosted
-    version: "3.0.0-dev.18"
+    version: "3.0.0"
   riverpod_analyzer_utils:
     dependency: transitive
     description:
       name: riverpod_analyzer_utils
-      sha256: "0478c5db914d006ad6e98ad56f685d041365c673b715f0630bde4fd6feff1db7"
+      sha256: c971e50f678d55c87d9e3b5015df7fcaadb2302a84ea101247cf99387b4554fe
       url: "https://pub.dev"
     source: hosted
-    version: "1.0.0-dev.5"
+    version: "1.0.0-dev.6"
   riverpod_annotation:
     dependency: "direct main"
     description:
       name: riverpod_annotation
-      sha256: "3da2dfb08595d821194729e0cc758cb90a269d8f5037a8f505c0e6fac3211882"
+      sha256: "1f9c1bc10b13f68ebc83ab391e77a865ff796880461d2a60c5ce301e1fb65f51"
       url: "https://pub.dev"
     source: hosted
-    version: "3.0.0-dev.18"
+    version: "3.0.0"
   riverpod_generator:
     dependency: "direct dev"
     description:
       name: riverpod_generator
-      sha256: cc6dd0a4280cdf5d9738a3c3e540dd658acef7b1e78fb84ca60545c56ac80453
+      sha256: "178d6bfa6de66d7db97db2466e5fad2da91a678ab376a7309235eec731755046"
       url: "https://pub.dev"
     source: hosted
-    version: "3.0.0-dev.18"
+    version: "3.0.0"
   riverpod_lint:
     dependency: "direct dev"
     description:
       name: riverpod_lint
-      sha256: "5f7695a7da9531800629a3a7d674014d5a31e0ec7eb795562cc2b874ae0ca8dc"
+      sha256: "89bce8d40bed52aa89b43ef45cfe473a9c7736629d61fc659c95e4e9f4d571a6"
       url: "https://pub.dev"
     source: hosted
-    version: "3.0.0-dev.18"
+    version: "3.0.0"
   rxdart:
     dependency: transitive
     description:

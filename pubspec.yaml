@@ -18,10 +18,10 @@ dependencies:
   flutter_web_plugins:
     sdk: flutter
   freezed_annotation: ^3.1.0
-  hooks_riverpod: ^3.0.0-dev.18
+  hooks_riverpod: ^3.0.0
   intl: ^0.20.2
-  melos: ^7.1.0
-  riverpod_annotation: ^3.0.0-dev.18
+  melos: ^7.1.1
+  riverpod_annotation: ^3.0.0
 
 dev_dependencies:
   auto_route_generator:
@@ -30,11 +30,11 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   flutter_test:
     sdk: flutter
-  freezed: ^3.2.2
-  freezed_lint: ^0.0.11
+  freezed: ^3.2.3
+  freezed_lint: ^0.0.12
   json_serializable: ^6.11.1
-  riverpod_generator: ^3.0.0-dev.18
-  riverpod_lint: ^3.0.0-dev.18
+  riverpod_generator: ^3.0.0
+  riverpod_lint: ^3.0.0
   very_good_analysis: ^9.0.0
 
 dependency_overrides:
