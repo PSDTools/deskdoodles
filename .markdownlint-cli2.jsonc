@@ -1,0 +1,7 @@
+{
+  "config": {
+    "line-length": false, // no one cares
+    "no-emphasis-as-heading": false, // to many false positives
+    "first-line-heading": false // github templates needed an ignore
+  }
+}
