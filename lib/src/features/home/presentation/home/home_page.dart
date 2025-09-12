@@ -4,8 +4,14 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../../../app/router.gr.dart';
 
+/// {@template deskdoodles.features.home.presentation.home.home_page}
+/// Create a scaffold to switch between the main sections of the app.
+/// {@endtemplate}
 @RoutePage(deferredLoading: true)
 class HomePage extends ConsumerWidget {
+  /// {@macro deskdoodles.features.home.presentation.home.home_page}
+  ///
+  /// Construct a new [HomePage] widget.
   const HomePage({super.key});
 
   static const List<PageRouteInfo<void>> _destinations = [

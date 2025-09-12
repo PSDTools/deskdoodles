@@ -7,7 +7,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../application/settings_service.dart';
 
-/// {@template deskdoodles.features.settings.presentation.preferences}
+/// {@template deskdoodles.features.settings.presentation.preferences.settings_page}
 /// Display the various settings that can be customized by the user.
 ///
 /// When a user changes a setting, this updates the [SettingsService] and
@@ -15,7 +15,7 @@ import '../../application/settings_service.dart';
 /// {@endtemplate}
 @RoutePage(deferredLoading: true)
 class SettingsPage extends ConsumerWidget {
-  /// {@macro deskdoodles.features.settings.presentation.preferences}
+  /// {@macro deskdoodles.features.settings.presentation.preferences.settings_page}
   ///
   /// Construct a new [SettingsPage] widget.
   const SettingsPage({super.key});
