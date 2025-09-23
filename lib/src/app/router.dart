@@ -25,7 +25,11 @@ class AppRouter extends RootStackRouter {
       path: '/',
 
       children: [
-        AutoRoute(page: FriendsListRoute.page, path: '', initial: true),
+        AutoRoute(page: YourRoomRoute.page, path: '', initial: true),
+        AutoRoute(
+          page: FriendsListRoute.page,
+          path: 'friends',
+        ),
         AutoRoute(
           page: SettingsRoute.page,
           path: 'settings',

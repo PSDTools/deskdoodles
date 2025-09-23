@@ -15,6 +15,7 @@ class HomePage extends ConsumerWidget {
   const HomePage({super.key});
 
   static const List<PageRouteInfo<void>> _destinations = [
+    YourRoomRoute(),
     FriendsListRoute(),
     SettingsRoute(),
   ];
@@ -38,6 +39,10 @@ class _BottomNav extends StatelessWidget {
       currentIndex: context.tabsRouter.activeIndex,
       onTap: context.tabsRouter.setActiveIndex,
       items: const [
+        BottomNavigationBarItem(
+          icon: Icon(Icons.home_outlined),
+          label: 'Your Room',
+        ),
         BottomNavigationBarItem(
           icon: Icon(Icons.people),
           label: 'Friends',
