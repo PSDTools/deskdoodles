@@ -172,18 +172,33 @@ class _YourRoomPageState extends ConsumerState<YourRoomPage> {
               : 0.0;
           final roomOrigin = Offset(originX, originY);
 
-          return GestureDetector(
+          return Listener(
             behavior: HitTestBehavior.translucent,
-            onTapDown: (details) {
-              final position = details.localPosition;
+            onPointerDown: (event) {
+              final position = event.localPosition;
               final insideRoom = position.dx >= roomOrigin.dx &&
                   position.dy >= roomOrigin.dy &&
                   position.dx <= roomOrigin.dx + roomSize.width &&
                   position.dy <= roomOrigin.dy + roomSize.height;
 
-              if (insideRoom) {
-                _handleTap(position - roomOrigin);
-              } else {
+              if (!insideRoom) {
+                _clearSelection();
+                return;
+              }
+
+              final roomLocal = position - roomOrigin;
+              final handled = _handleTap(roomLocal);
+
+              if (!handled) {
+                final selected = _selectedItemId;
+                if (selected != null) {
+                  final selectionRect = _selectionRectFor(selected);
+                  if (selectionRect != null &&
+                      selectionRect.contains(roomLocal)) {
+                    return;
+                  }
+                }
+
                 _clearSelection();
               }
             },
@@ -347,7 +362,7 @@ class _YourRoomPageState extends ConsumerState<YourRoomPage> {
     return widgets;
   }
 
-  void _handleTap(Offset localPosition) {
+  bool _handleTap(Offset localPosition) {
     for (final id in _hitOrder.reversed) {
       final rect = _currentHitRects[id];
       if (rect == null || !rect.contains(localPosition)) continue;
@@ -365,15 +380,32 @@ class _YourRoomPageState extends ConsumerState<YourRoomPage> {
       if (_selectedItemId != id) {
         setState(() => _selectedItemId = id);
       }
-      return;
+      return true;
     }
 
-    _clearSelection();
+    return false;
   }
 
   void _clearSelection() {
     if (_selectedItemId == null) return;
     setState(() => _selectedItemId = null);
+  }
+
+  Rect? _selectionRectFor(String id) {
+    final layout = _currentLayouts[id];
+    if (layout == null) return null;
+
+    final bounds = _contentBounds[id];
+    final resolved = (bounds != null && bounds.width > 0 && bounds.height > 0)
+        ? bounds
+        : Rect.fromLTWH(0, 0, layout.size.width, layout.size.height);
+
+    return Rect.fromLTWH(
+      layout.topLeft.dx + resolved.left - _SelectionFrame.padding.left,
+      layout.topLeft.dy + resolved.top - _SelectionFrame.padding.top,
+      resolved.width + _SelectionFrame.padding.horizontal,
+      resolved.height + _SelectionFrame.padding.vertical,
+    );
   }
 }
 
@@ -1109,22 +1141,7 @@ class _InteractiveRoomAssetState extends State<_InteractiveRoomAsset> {
 
     final bounds = _lastContentBounds;
     if (bounds != null) {
-      final expanded = Rect.fromLTRB(
-        (bounds.left - _SelectionFrame.padding.left)
-            .clamp(0.0, widget.layout.size.width),
-        (bounds.top - _SelectionFrame.padding.top)
-            .clamp(0.0, widget.layout.size.height),
-        (bounds.right + _SelectionFrame.padding.right)
-            .clamp(0.0, widget.layout.size.width),
-        (bounds.bottom + _SelectionFrame.padding.bottom)
-            .clamp(0.0, widget.layout.size.height),
-      );
-
-      if (expanded.contains(localPosition)) {
-        return true;
-      }
-
-      return false;
+      return bounds.contains(localPosition);
     }
 
     return _isOpaqueHit(localPosition);
