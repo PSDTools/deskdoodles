@@ -96,6 +96,10 @@ class _YourRoomPageState extends ConsumerState<YourRoomPage> {
   late Map<String, double> _scales;
   String? _selectedItemId;
   final _contentBounds = <String, Rect>{};
+  var _currentHitRects = <String, Rect>{};
+  var _hitOrder = <String>[];
+  final _assetKeys = <String, GlobalKey<_InteractiveRoomAssetState>>{};
+  var _currentLayouts = <String, RoomItemLayout>{};
 
   @override
   void initState() {
@@ -108,8 +112,6 @@ class _YourRoomPageState extends ConsumerState<YourRoomPage> {
       for (final item in YourRoomPage._items) item.id: 1,
     };
   }
-
-  static const _fullBounds = Rect.fromLTWH(0, 0, 1, 1);
 
   void _updateContentBounds(String id, Rect bounds) {
     final current = _contentBounds[id];
@@ -129,9 +131,10 @@ class _YourRoomPageState extends ConsumerState<YourRoomPage> {
   }
 
   void _updatePosition(String id, Offset newPosition) {
+    const slack = 0.5;
     final clamped = Offset(
-      newPosition.dx.clamp(0.0, 1.0),
-      newPosition.dy.clamp(0.0, 1.0),
+      newPosition.dx.clamp(-slack, 1 + slack),
+      newPosition.dy.clamp(-slack, 1 + slack),
     );
 
     setState(() {
@@ -171,7 +174,7 @@ class _YourRoomPageState extends ConsumerState<YourRoomPage> {
                   Positioned.fill(
                     child: GestureDetector(
                       behavior: HitTestBehavior.translucent,
-                      onTap: () => setState(() => _selectedItemId = null),
+                      onTapDown: (details) => _handleTap(details.localPosition),
                     ),
                   ),
                   const DecoratedBox(
@@ -222,6 +225,9 @@ class _YourRoomPageState extends ConsumerState<YourRoomPage> {
 
   List<Widget> _buildRoomItems(Size roomSize) {
     final widgets = <Widget>[];
+    final hitRects = <String, Rect>{};
+    final layouts = <String, RoomItemLayout>{};
+    final order = <String>[];
 
     for (final item in YourRoomPage._items) {
       final normalizedPosition = _positions[item.id] ?? item.defaultPosition;
@@ -231,21 +237,28 @@ class _YourRoomPageState extends ConsumerState<YourRoomPage> {
         normalizedPosition: normalizedPosition,
         scale: scale,
       );
-      final boundsNormalized = _contentBounds[item.id] ?? _fullBounds;
-      final hasValidBounds =
-          boundsNormalized.width > 0 && boundsNormalized.height > 0;
-      final contentTopLeft = hasValidBounds
-          ? Offset(
-              layout.topLeft.dx + layout.size.width * boundsNormalized.left,
-              layout.topLeft.dy + layout.size.height * boundsNormalized.top,
-            )
-          : layout.topLeft;
-      final effectiveContentSize = hasValidBounds
-          ? Size(
-              layout.size.width * boundsNormalized.width,
-              layout.size.height * boundsNormalized.height,
-            )
-          : layout.size;
+      final boundsRect = _contentBounds[item.id];
+      final resolvedRect =
+          (boundsRect != null && boundsRect.width > 0 && boundsRect.height > 0)
+          ? boundsRect
+          : Rect.fromLTWH(0, 0, layout.size.width, layout.size.height);
+      final contentTopLeft = layout.topLeft + resolvedRect.topLeft;
+      final effectiveContentSize = resolvedRect.size;
+      final hitRect = Rect.fromLTWH(
+        contentTopLeft.dx,
+        contentTopLeft.dy,
+        effectiveContentSize.width,
+        effectiveContentSize.height,
+      );
+      hitRects[item.id] = hitRect;
+      order.add(item.id);
+
+      final assetKey = _assetKeys.putIfAbsent(
+        item.id,
+        GlobalKey<_InteractiveRoomAssetState>.new,
+      );
+
+      void handleBounds(Rect bounds) => _updateContentBounds(item.id, bounds);
 
       widgets.add(
         Positioned(
@@ -255,6 +268,7 @@ class _YourRoomPageState extends ConsumerState<YourRoomPage> {
             width: layout.size.width,
             height: layout.size.height,
             child: _InteractiveRoomAsset(
+              key: assetKey,
               item: item,
               layout: layout,
               normalizedPosition: normalizedPosition,
@@ -272,8 +286,7 @@ class _YourRoomPageState extends ConsumerState<YourRoomPage> {
                   _updatePosition(item.id, updatedPosition),
               onScaleChanged: (updatedScale) =>
                   _updateScale(item.id, updatedScale),
-              onContentBoundsChanged: (bounds) =>
-                  _updateContentBounds(item.id, bounds),
+              onContentBoundsChanged: handleBounds,
             ),
           ),
         ),
@@ -297,13 +310,45 @@ class _YourRoomPageState extends ConsumerState<YourRoomPage> {
               onScaleChanged: (value) => _updateScale(item.id, value),
               onPositionChanged: (updatedPosition) =>
                   _updatePosition(item.id, updatedPosition),
+              onEnsureSelected: () => setState(() => _selectedItemId = item.id),
             ),
           ),
         );
       }
+
+      layouts[item.id] = layout;
     }
 
+    _currentHitRects = hitRects;
+    _hitOrder = order;
+    _currentLayouts = layouts;
     return widgets;
+  }
+
+  void _handleTap(Offset localPosition) {
+    for (final id in _hitOrder.reversed) {
+      final rect = _currentHitRects[id];
+      if (rect == null || !rect.contains(localPosition)) continue;
+
+      final layout = _currentLayouts[id];
+      final state = _assetKeys[id]?.currentState;
+
+      if (layout != null && state != null) {
+        final local = localPosition - layout.topLeft;
+        if (!state.hitTestLocal(local)) {
+          continue;
+        }
+      }
+
+      if (_selectedItemId != id) {
+        setState(() => _selectedItemId = id);
+      }
+      return;
+    }
+
+    if (_selectedItemId != null) {
+      setState(() => _selectedItemId = null);
+    }
   }
 }
 
@@ -354,6 +399,7 @@ class _SelectionFrame extends StatefulWidget {
     required this.currentScale,
     required this.onScaleChanged,
     required this.onPositionChanged,
+    required this.onEnsureSelected,
   });
 
   static const double handleSize = 28;
@@ -374,6 +420,7 @@ class _SelectionFrame extends StatefulWidget {
   final double currentScale;
   final ValueChanged<double> onScaleChanged;
   final ValueChanged<Offset> onPositionChanged;
+  final VoidCallback onEnsureSelected;
 
   @override
   State<_SelectionFrame> createState() => _SelectionFrameState();
@@ -397,6 +444,12 @@ class _SelectionFrame extends StatefulWidget {
         ObjectFlagProperty<ValueChanged<Offset>>.has(
           'onPositionChanged',
           onPositionChanged,
+        ),
+      )
+      ..add(
+        ObjectFlagProperty<VoidCallback>.has(
+          'onEnsureSelected',
+          onEnsureSelected,
         ),
       );
   }
@@ -505,15 +558,22 @@ class _SelectionFrameState extends State<_SelectionFrame> {
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         dragStartBehavior: DragStartBehavior.down,
-        onPanDown: (details) => developer.log(
-          'drag panDown position=${details.localPosition}',
-          name: 'selection.${widget.item.id}',
-        ),
-        onTapDown: (_) => developer.log(
-          'drag handle tap',
-          name: 'selection.${widget.item.id}',
-        ),
+        onPanDown: (details) {
+          widget.onEnsureSelected();
+          developer.log(
+            'drag panDown position=${details.localPosition}',
+            name: 'selection.${widget.item.id}',
+          );
+        },
+        onTapDown: (_) {
+          widget.onEnsureSelected();
+          developer.log(
+            'drag handle tap',
+            name: 'selection.${widget.item.id}',
+          );
+        },
         onPanStart: (_) {
+          widget.onEnsureSelected();
           _dragging = true;
           _dragAnchorWorldOrigin = widget.layout.anchorWorld;
           _dragAnchorDelta = Offset.zero;
@@ -568,7 +628,12 @@ class _SelectionFrameState extends State<_SelectionFrame> {
       left: left,
       top: top,
       child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        dragStartBehavior: DragStartBehavior.down,
+        onPanDown: (_) => widget.onEnsureSelected(),
+        onTapDown: (_) => widget.onEnsureSelected(),
         onPanStart: (_) {
+          widget.onEnsureSelected();
           _resizing = true;
           _initialScale = widget.currentScale;
           _initialWidth = widget.layout.size.width;
@@ -686,6 +751,7 @@ class _InteractiveRoomAsset extends StatefulWidget {
     required this.onPositionChanged,
     required this.onScaleChanged,
     this.onContentBoundsChanged,
+    super.key,
   });
 
   final RoomItem item;
@@ -699,7 +765,7 @@ class _InteractiveRoomAsset extends StatefulWidget {
   final ValueChanged<Rect>? onContentBoundsChanged;
 
   static const minScale = 0.5;
-  static const maxScale = 2.5;
+  static const maxScale = 200.5;
 
   @override
   State<_InteractiveRoomAsset> createState() => _InteractiveRoomAssetState();
@@ -746,6 +812,7 @@ class _InteractiveRoomAssetState extends State<_InteractiveRoomAsset> {
   late Offset _startGlobalFocalPoint;
   late Offset _pivotDelta;
   var _isInteracting = false;
+  var _interactionActive = false;
 
   ImageStream? _imageStream;
   ImageStreamListener? _imageListener;
@@ -796,7 +863,7 @@ class _InteractiveRoomAssetState extends State<_InteractiveRoomAsset> {
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
       onTapDown: (details) {
-        if (_isOpaqueHit(details.localPosition)) {
+        if (hitTestLocal(details.localPosition)) {
           widget.onSelected();
         } else {
           developer.log(
@@ -806,16 +873,22 @@ class _InteractiveRoomAssetState extends State<_InteractiveRoomAsset> {
         }
       },
       onScaleStart: (details) {
+        final local = details.localFocalPoint;
+        if (!hitTestLocal(local)) {
+          _interactionActive = false;
+          return;
+        }
+        widget.onSelected();
+        _interactionActive = true;
         _isInteracting = true;
         _startPosition = widget.normalizedPosition;
         _startScale = widget.scale;
-        _startFocalNormalized = _computeFocalNormalized(
-          details.localFocalPoint,
-        );
+        _startFocalNormalized = _computeFocalNormalized(local);
         _pivotDelta = _startPosition - _startFocalNormalized;
         _startGlobalFocalPoint = details.focalPoint;
       },
       onScaleUpdate: (details) {
+        if (!_interactionActive) return;
         final translation = details.focalPoint - _startGlobalFocalPoint;
         final normalizedTranslation = Offset(
           translation.dx / widget.roomSize.width,
@@ -834,6 +907,8 @@ class _InteractiveRoomAssetState extends State<_InteractiveRoomAsset> {
         widget.onPositionChanged(anchorNormalized);
       },
       onScaleEnd: (_) {
+        if (!_interactionActive) return;
+        _interactionActive = false;
         _isInteracting = false;
         _startPosition = widget.normalizedPosition;
         _startScale = widget.scale;
@@ -883,7 +958,7 @@ class _InteractiveRoomAssetState extends State<_InteractiveRoomAsset> {
 
     if (image == null || bytes == null || callback == null) return;
 
-    final bounds = _calculateContentBoundsNormalized(image, bytes);
+    final bounds = _calculateContentBounds(image, bytes);
 
     if (_lastContentBounds != null &&
         _rectsClose(_lastContentBounds!, bounds)) {
@@ -894,7 +969,7 @@ class _InteractiveRoomAssetState extends State<_InteractiveRoomAsset> {
     callback(bounds);
   }
 
-  Rect _calculateContentBoundsNormalized(ui.Image image, ByteData bytes) {
+  Rect _calculateContentBounds(ui.Image image, ByteData bytes) {
     final width = image.width;
     final height = image.height;
 
@@ -924,13 +999,36 @@ class _InteractiveRoomAssetState extends State<_InteractiveRoomAsset> {
     }
 
     if (maxX < minX || maxY < minY) {
-      return const Rect.fromLTWH(0, 0, 1, 1);
+      return Rect.fromLTWH(
+        0,
+        0,
+        widget.layout.size.width,
+        widget.layout.size.height,
+      );
     }
 
-    final left = minX / width;
-    final top = minY / height;
-    final right = (maxX + 1) / width;
-    final bottom = (maxY + 1) / height;
+    final imageSize = Size(width.toDouble(), height.toDouble());
+    final fittedSizes = applyBoxFit(
+      BoxFit.contain,
+      imageSize,
+      widget.layout.size,
+    );
+    final renderSize = fittedSizes.destination;
+    final offsetX = (widget.layout.size.width - renderSize.width) / 2;
+    final offsetY = (widget.layout.size.height - renderSize.height) / 2;
+    final scaleX = renderSize.width / width;
+    final scaleY = renderSize.height / height;
+
+    final left = (offsetX + minX * scaleX).clamp(0.0, widget.layout.size.width);
+    final top = (offsetY + minY * scaleY).clamp(0.0, widget.layout.size.height);
+    final right = (offsetX + (maxX + 1) * scaleX).clamp(
+      0.0,
+      widget.layout.size.width,
+    );
+    final bottom = (offsetY + (maxY + 1) * scaleY).clamp(
+      0.0,
+      widget.layout.size.height,
+    );
 
     return Rect.fromLTRB(left, top, right, bottom);
   }
@@ -974,6 +1072,30 @@ class _InteractiveRoomAssetState extends State<_InteractiveRoomAsset> {
     final alpha = bytes.getUint8(byteOffset + 3);
 
     return alpha > 10;
+  }
+
+  bool hitTestLocal(Offset localPosition) {
+    if (localPosition.dx < 0 ||
+        localPosition.dy < 0 ||
+        localPosition.dx > widget.layout.size.width ||
+        localPosition.dy > widget.layout.size.height) {
+      return false;
+    }
+
+    final bounds = _lastContentBounds;
+    if (bounds != null) {
+      // If we're inside the trimmed content bounds, accept the hit even if the
+      // specific pixel is transparent. This keeps the interaction area aligned
+      // with the furthest non-transparent pixel in any direction.
+      if (bounds.contains(localPosition)) {
+        return true;
+      }
+
+      // Outside the bounds? Then there is no opaque content further out.
+      return false;
+    }
+
+    return _isOpaqueHit(localPosition);
   }
 }
 
