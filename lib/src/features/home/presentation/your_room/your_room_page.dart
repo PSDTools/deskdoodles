@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import '../../domain/room_item_entity.dart';
 
 /// {@template deskdoodles.features.home.presentation.your_room.your_room_page}
 /// Showcase the current user's personalized room with quick actions.
@@ -19,8 +20,8 @@ class YourRoomPage extends ConsumerStatefulWidget {
 
   static const double _roomAspectRatio = 9 / 16;
 
-  static const _items = <_RoomItem>[
-    _RoomItem(
+  static const _items = [
+    RoomItem(
       id: 'stringLights',
       assetName: 'assets/your_room/string-light-on.png',
       defaultPosition: Offset(0.5, 0.08),
@@ -28,7 +29,7 @@ class YourRoomPage extends ConsumerStatefulWidget {
       anchor: Alignment.topCenter,
       semanticLabel: 'String lights hanging across the ceiling.',
     ),
-    _RoomItem(
+    RoomItem(
       id: 'window',
       assetName: 'assets/your_room/window.png',
       defaultPosition: Offset(0.2, 0.32),
@@ -36,7 +37,7 @@ class YourRoomPage extends ConsumerStatefulWidget {
       anchor: Alignment.topCenter,
       semanticLabel: 'Window looking out into the night sky.',
     ),
-    _RoomItem(
+    RoomItem(
       id: 'clock',
       assetName: 'assets/your_room/clock.png',
       defaultPosition: Offset(0.78, 0.28),
@@ -44,7 +45,7 @@ class YourRoomPage extends ConsumerStatefulWidget {
       anchor: Alignment.topCenter,
       semanticLabel: 'Wall clock showing the current time.',
     ),
-    _RoomItem(
+    RoomItem(
       id: 'poster',
       assetName: 'assets/your_room/poster.png',
       defaultPosition: Offset(0.78, 0.48),
@@ -52,7 +53,7 @@ class YourRoomPage extends ConsumerStatefulWidget {
       anchor: Alignment.topCenter,
       semanticLabel: 'Framed poster of friends.',
     ),
-    _RoomItem(
+    RoomItem(
       id: 'dresser',
       assetName: 'assets/your_room/dresser.png',
       defaultPosition: Offset(0.23, 0.78),
@@ -60,7 +61,7 @@ class YourRoomPage extends ConsumerStatefulWidget {
       anchor: Alignment.bottomCenter,
       semanticLabel: 'Wooden dresser with drawers.',
     ),
-    _RoomItem(
+    RoomItem(
       id: 'lamp',
       assetName: 'assets/your_room/lamp.png',
       defaultPosition: Offset(0.18, 0.58),
@@ -68,7 +69,7 @@ class YourRoomPage extends ConsumerStatefulWidget {
       anchor: Alignment.bottomCenter,
       semanticLabel: 'Bedside lamp glowing warmly.',
     ),
-    _RoomItem(
+    RoomItem(
       id: 'radio',
       assetName: 'assets/your_room/radio.png',
       defaultPosition: Offset(0.29, 0.61),
@@ -76,7 +77,7 @@ class YourRoomPage extends ConsumerStatefulWidget {
       anchor: Alignment.bottomCenter,
       semanticLabel: 'Little radio for tunes.',
     ),
-    _RoomItem(
+    RoomItem(
       id: 'chair',
       assetName: 'assets/your_room/chair.png',
       defaultPosition: Offset(0.68, 0.82),
@@ -307,117 +308,6 @@ Size _resolveRoomSize(BoxConstraints constraints, Size fallbackSize) {
   return Size(width, height);
 }
 
-@immutable
-class _RoomItem {
-  const _RoomItem({
-    required this.id,
-    required this.assetName,
-    required this.defaultPosition,
-    required this.anchor,
-    this.widthFactor,
-    this.heightFactor,
-    this.semanticLabel,
-  }) : assert(
-         widthFactor != null || heightFactor != null,
-         'At least one dimension factor must be provided.',
-       );
-
-  final String id;
-  final String assetName;
-  final Offset defaultPosition;
-  final Alignment anchor;
-  final double? widthFactor;
-  final double? heightFactor;
-  final String? semanticLabel;
-
-  _RoomItemLayout layoutFor({
-    required Size availableSize,
-    required Offset normalizedPosition,
-    required double scale,
-  }) {
-    final baseWidth = widthFactor != null
-        ? availableSize.width * widthFactor!
-        : null;
-    final baseHeight = heightFactor != null
-        ? availableSize.height * heightFactor!
-        : null;
-
-    var width = baseWidth != null ? baseWidth * scale : null;
-    var height = baseHeight != null ? baseHeight * scale : null;
-
-    // If only one dimension is known, infer the other to keep aspect-ish ratio.
-    if (width == null && height != null) {
-      width = height;
-    } else if (height == null && width != null) {
-      height = width;
-    } else if (width == null && height == null) {
-      width = availableSize.width * 0.2 * scale;
-      height = width;
-    }
-
-    final safeWidth = width ?? 0;
-    final safeHeight = height ?? 0;
-
-    final anchorWorld = Offset(
-      normalizedPosition.dx * availableSize.width,
-      normalizedPosition.dy * availableSize.height,
-    );
-    final anchorOffset = _anchorOffset(
-      anchor: anchor,
-      width: safeWidth,
-      height: safeHeight,
-    );
-    final topLeft = anchorWorld - anchorOffset;
-
-    return _RoomItemLayout(
-      itemId: id,
-      topLeft: topLeft,
-      size: Size(safeWidth, safeHeight),
-      anchorNormalized: normalizedPosition,
-      anchorWorld: anchorWorld,
-    );
-  }
-
-  @override
-  String toString() {
-    return '_RoomItem(id: $id, assetName: $assetName)';
-  }
-}
-
-class _RoomItemLayout {
-  const _RoomItemLayout({
-    required this.itemId,
-    required this.topLeft,
-    required this.size,
-    required this.anchorNormalized,
-    required this.anchorWorld,
-  });
-
-  final String itemId;
-  final Offset topLeft;
-  final Size size;
-  final Offset anchorNormalized;
-  final Offset anchorWorld;
-
-  Offset get center => topLeft + Offset(size.width / 2, size.height / 2);
-  Rect get rect => topLeft & size;
-
-  Offset normalizedForRoom(Size roomSize, Offset point) {
-    return Offset(point.dx / roomSize.width, point.dy / roomSize.height);
-  }
-
-  Offset handlePosition(_Handle handle) {
-    switch (handle) {
-      case _Handle.drag:
-        return Offset(size.width / 2, -24);
-      case _Handle.resizeBottomRight:
-        return Offset(size.width, size.height);
-    }
-  }
-}
-
-enum _Handle { drag, resizeBottomRight }
-
 class _SelectionFrame extends StatefulWidget {
   const _SelectionFrame({
     required this.item,
@@ -433,8 +323,8 @@ class _SelectionFrame extends StatefulWidget {
   static const double topPadding = handleSize * 1.6;
   static const double bottomPadding = handleSize * 1.0;
 
-  final _RoomItem item;
-  final _RoomItemLayout layout;
+  final RoomItem item;
+  final RoomItemLayout layout;
   final Size roomSize;
   final double currentScale;
   final ValueChanged<double> onScaleChanged;
@@ -676,12 +566,12 @@ class _SelectionFrameState extends State<_SelectionFrame> {
           final newWidth = _baseWidth * nextScale;
           final newHeight = _baseHeight * nextScale;
 
-          final anchorOffset = _anchorOffset(
+          final offset = anchorOffset(
             anchor: widget.item.anchor,
             width: newWidth,
             height: newHeight,
           );
-          final anchorWorld = _initialTopLeft + anchorOffset;
+          final anchorWorld = _initialTopLeft + offset;
           final normalized = Offset(
             anchorWorld.dx / widget.roomSize.width,
             anchorWorld.dy / widget.roomSize.height,
@@ -758,8 +648,8 @@ class _InteractiveRoomAsset extends StatefulWidget {
     required this.onScaleChanged,
   });
 
-  final _RoomItem item;
-  final _RoomItemLayout layout;
+  final RoomItem item;
+  final RoomItemLayout layout;
   final Offset normalizedPosition;
   final double scale;
   final Size roomSize;
@@ -967,21 +857,11 @@ class _InteractiveRoomAssetState extends State<_InteractiveRoomAsset> {
   }
 }
 
-Offset _anchorOffset({
-  required Alignment anchor,
-  double? width,
-  double? height,
-}) {
-  final dx = width != null ? width * (anchor.x + 1) / 2 : 0.0;
-  final dy = height != null ? height * (anchor.y + 1) / 2 : 0.0;
-  return Offset(dx, dy);
-}
-
 extension on _InteractiveRoomAssetState {
   Offset _computeFocalNormalized(Offset localFocalPoint) {
     final width = widget.layout.size.width;
     final height = widget.layout.size.height;
-    final anchorOffset = _anchorOffset(
+    final offset = anchorOffset(
       anchor: widget.item.anchor,
       width: width,
       height: height,
@@ -991,7 +871,7 @@ extension on _InteractiveRoomAssetState {
       _startPosition.dx * widget.roomSize.width,
       _startPosition.dy * widget.roomSize.height,
     );
-    final topLeft = anchorWorld - anchorOffset;
+    final topLeft = anchorWorld - offset;
     final focalWorld = topLeft + localFocalPoint;
 
     return Offset(
