@@ -45,24 +45,10 @@ jobs:
           cache: true
       - name: 🌐 Disable analytics
         run: flutter --disable-analytics
-      - name: ⚙️ Cache generated files
-        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
-        with:
-          path: |
-            .dart_tool/
-            lib/src/**/*.g.dart
-            lib/src/**/*.freezed.dart
-            lib/src/app/*.gr.dart
-            lib/src/app/*.gm.dart
-            lib/src/l10n/app_localizations.dart
-            lib/src/l10n/app_localizations_*.dart
-          key: generated-${{ steps.flutter.outputs.CHANNEL }}-${{ runner.os }}-${{ hashFiles('**/build.yaml') }}-${{ hashFiles('lib/**.dart') }}
-          restore-keys: generated-${{ steps.flutter.outputs.CHANNEL }}-${{ runner.os }}-
       - name: 📦 Install dependencies
-        uses: bluefireteam/melos-action@8cca19067d5bc4021b5a9f4656955d8b386583bf # v3.4.0
-        with:
-          run-bootstrap: true
-          enforce-lockfile: true
+        run: dart pub get --enforce-lockfile
+      - name: ⚙️ Generate code
+        run: dart run build_runner build
       - name: 🌲 Check for uncommitted changes
         uses: infotroph/tree-is-clean@69d598a958e8cb8f3d0e3d52b5ebcd8684f2adc2 # v1.0.6
 
@@ -127,19 +113,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: 🌐 Disable analytics
         run: flutter --disable-analytics
-      - name: ⚙️ Cache generated files
-        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
-        with:
-          path: |
-            .dart_tool/
-            lib/src/**/*.g.dart
-            lib/src/**/*.freezed.dart
-            lib/src/app/*.gr.dart
-            lib/src/app/*.gm.dart
-            lib/src/l10n/app_localizations.dart
-            lib/src/l10n/app_localizations_*.dart
-          key: generated-${{ steps.flutter.outputs.CHANNEL }}-${{ runner.os }}-${{ hashFiles('**/build.yaml') }}-${{ hashFiles('lib/**.dart') }}
-          restore-keys: generated-${{ steps.flutter.outputs.CHANNEL }}-${{ runner.os }}-
       - name: 📦 Install dependencies
         run: dart pub get --enforce-lockfile
       - name: 🔧 Build
@@ -176,23 +149,6 @@ jobs:
           cache: true
       - name: 🌐 Disable analytics
         run: flutter --disable-analytics
-      - name: ⚙️ Cache generated files
-        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
-        with:
-          path: |
-            .dart_tool/
-            lib/src/**/*.g.dart
-            lib/src/**/*.freezed.dart
-            lib/src/app/*.gr.dart
-            lib/src/app/*.gm.dart
-            lib/src/l10n/app_localizations.dart
-            lib/src/l10n/app_localizations_*.dart
-          key: generated-${{ steps.flutter.outputs.CHANNEL }}-${{ runner.os }}-${{ hashFiles('**/build.yaml') }}-${{ hashFiles('lib/**.dart') }}
-          restore-keys: generated-${{ steps.flutter.outputs.CHANNEL }}-${{ runner.os }}-
-      - name: 🌋 Install Melos
-        uses: bluefireteam/melos-action@8cca19067d5bc4021b5a9f4656955d8b386583bf # v3.4.0
-        with:
-          run-bootstrap: false
       - name: 📦 Install dependencies
         run: dart pub get --enforce-lockfile
       - name: 🕵️ Analyze project source

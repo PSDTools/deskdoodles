@@ -318,10 +318,12 @@ class _RoomItem {
     required Offset normalizedPosition,
     required double scale,
   }) {
-    final baseWidth =
-        widthFactor != null ? availableSize.width * widthFactor! : null;
-    final baseHeight =
-        heightFactor != null ? availableSize.height * heightFactor! : null;
+    final baseWidth = widthFactor != null
+        ? availableSize.width * widthFactor!
+        : null;
+    final baseHeight = heightFactor != null
+        ? availableSize.height * heightFactor!
+        : null;
 
     var width = baseWidth != null ? baseWidth * scale : null;
     var height = baseHeight != null ? baseHeight * scale : null;
@@ -534,7 +536,10 @@ class _SelectionFrameState extends State<_SelectionFrame> {
           _dragOriginNormalized = widget.layout.anchorNormalized;
           _dragAccumulated = Offset.zero;
         },
-        child: const _HandleVisual(icon: Icons.open_with_rounded, size: _handleSize),
+        child: const _HandleVisual(
+          icon: Icons.open_with_rounded,
+          size: _handleSize,
+        ),
       ),
     );
   }
@@ -553,8 +558,14 @@ class _SelectionFrameState extends State<_SelectionFrame> {
         },
         onPanUpdate: (details) {
           _resizeAccumulated += details.delta;
-          final targetWidth = (_initialWidth + _resizeAccumulated.dx).clamp(24, widget.roomSize.width);
-          final targetHeight = (_initialHeight + _resizeAccumulated.dy).clamp(24, widget.roomSize.height);
+          final targetWidth = (_initialWidth + _resizeAccumulated.dx).clamp(
+            24,
+            widget.roomSize.width,
+          );
+          final targetHeight = (_initialHeight + _resizeAccumulated.dy).clamp(
+            24,
+            widget.roomSize.height,
+          );
           final widthRatio = targetWidth / _initialWidth;
           final heightRatio = targetHeight / _initialHeight;
           final ratio = ((widthRatio + heightRatio) / 2).clamp(0.01, 100.0);
@@ -572,7 +583,10 @@ class _SelectionFrameState extends State<_SelectionFrame> {
           _initialHeight = widget.layout.size.height;
           _resizeAccumulated = Offset.zero;
         },
-        child: const _HandleVisual(icon: Icons.zoom_out_map_rounded, size: _handleSize),
+        child: const _HandleVisual(
+          icon: Icons.zoom_out_map_rounded,
+          size: _handleSize,
+        ),
       ),
     );
   }

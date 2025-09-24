@@ -15,7 +15,6 @@ analyzer:
     unused_element_parameter: ignore
 
   exclude:
-    - "test/.test_coverage.dart"
     - "build/**"
 
   plugins:
