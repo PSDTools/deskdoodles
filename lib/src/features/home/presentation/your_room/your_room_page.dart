@@ -1,4 +1,5 @@
 import 'dart:developer' as developer;
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:auto_route/auto_route.dart';
@@ -94,6 +95,7 @@ class YourRoomPage extends ConsumerStatefulWidget {
 class _YourRoomPageState extends ConsumerState<YourRoomPage> {
   late Map<String, Offset> _positions;
   late Map<String, double> _scales;
+  var _rotations = <String, double>{};
   String? _selectedItemId;
   final _contentBounds = <String, Rect>{};
   var _currentHitRects = <String, Rect>{};
@@ -110,6 +112,9 @@ class _YourRoomPageState extends ConsumerState<YourRoomPage> {
     };
     _scales = {
       for (final item in YourRoomPage._items) item.id: 1,
+    };
+    _rotations = {
+      for (final item in YourRoomPage._items) item.id: 0,
     };
   }
 
@@ -153,6 +158,13 @@ class _YourRoomPageState extends ConsumerState<YourRoomPage> {
     });
   }
 
+  void _updateRotation(String id, double rotation) {
+    final normalized = _normalizeAngle(rotation);
+    setState(() {
+      _rotations = Map<String, double>.from(_rotations)..[id] = normalized;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return SafeArea(
@@ -176,7 +188,8 @@ class _YourRoomPageState extends ConsumerState<YourRoomPage> {
             behavior: HitTestBehavior.translucent,
             onPointerDown: (event) {
               final position = event.localPosition;
-              final insideRoom = position.dx >= roomOrigin.dx &&
+              final insideRoom =
+                  position.dx >= roomOrigin.dx &&
                   position.dy >= roomOrigin.dy &&
                   position.dx <= roomOrigin.dx + roomSize.width &&
                   position.dy <= roomOrigin.dy + roomSize.height;
@@ -269,6 +282,7 @@ class _YourRoomPageState extends ConsumerState<YourRoomPage> {
     for (final item in YourRoomPage._items) {
       final normalizedPosition = _positions[item.id] ?? item.defaultPosition;
       final scale = _scales[item.id] ?? 1;
+      final rotation = _rotations[item.id] ?? 0;
       final layout = item.layoutFor(
         availableSize: roomSize,
         normalizedPosition: normalizedPosition,
@@ -279,15 +293,14 @@ class _YourRoomPageState extends ConsumerState<YourRoomPage> {
           (boundsRect != null && boundsRect.width > 0 && boundsRect.height > 0)
           ? boundsRect
           : Rect.fromLTWH(0, 0, layout.size.width, layout.size.height);
-      final contentTopLeft = layout.topLeft + resolvedRect.topLeft;
+      // final contentTopLeft = layout.topLeft + resolvedRect.topLeft; // unused
       final effectiveContentSize = resolvedRect.size;
-      final hitRect = Rect.fromLTWH(
-        contentTopLeft.dx,
-        contentTopLeft.dy,
-        effectiveContentSize.width,
-        effectiveContentSize.height,
+      final selectionRect = _buildSelectionRect(
+        layout,
+        resolvedRect,
+        rotation,
       );
-      hitRects[item.id] = hitRect;
+      hitRects[item.id] = selectionRect;
       order.add(item.id);
 
       final assetKey = _assetKeys.putIfAbsent(
@@ -310,6 +323,7 @@ class _YourRoomPageState extends ConsumerState<YourRoomPage> {
               layout: layout,
               normalizedPosition: normalizedPosition,
               scale: scale,
+              rotation: rotation,
               roomSize: roomSize,
               onSelected: () {
                 developer.log(
@@ -323,6 +337,8 @@ class _YourRoomPageState extends ConsumerState<YourRoomPage> {
                   _updatePosition(item.id, updatedPosition),
               onScaleChanged: (updatedScale) =>
                   _updateScale(item.id, updatedScale),
+              onRotationChanged: (updatedRotation) =>
+                  _updateRotation(item.id, updatedRotation),
               onContentBoundsChanged: handleBounds,
             ),
           ),
@@ -330,24 +346,32 @@ class _YourRoomPageState extends ConsumerState<YourRoomPage> {
       );
 
       if (_selectedItemId == item.id) {
+        // Position the selection overlay at the asset's layout top-left
+        // and give it the full layout size so the internal Transform.rotate
+        // rotates around the asset center correctly.
         widgets.add(
           Positioned(
-            left: contentTopLeft.dx - _SelectionFrame.padding.left,
-            top: contentTopLeft.dy - _SelectionFrame.padding.top,
-            width:
-                effectiveContentSize.width + _SelectionFrame.padding.horizontal,
-            height:
-                effectiveContentSize.height + _SelectionFrame.padding.vertical,
-            child: _SelectionFrame(
-              item: item,
-              layout: layout,
-              roomSize: roomSize,
-              currentScale: scale,
-              contentSize: effectiveContentSize,
-              onScaleChanged: (value) => _updateScale(item.id, value),
-              onPositionChanged: (updatedPosition) =>
-                  _updatePosition(item.id, updatedPosition),
-              onEnsureSelected: () => setState(() => _selectedItemId = item.id),
+            left: layout.topLeft.dx,
+            top: layout.topLeft.dy,
+            width: layout.size.width,
+            height: layout.size.height,
+            child: SizedBox(
+              width: layout.size.width,
+              height: layout.size.height,
+              child: _SelectionFrame(
+                item: item,
+                layout: layout,
+                roomSize: roomSize,
+                rotation: rotation,
+                currentScale: scale,
+                contentSize: effectiveContentSize,
+                contentRect: resolvedRect,
+                onScaleChanged: (value) => _updateScale(item.id, value),
+                onPositionChanged: (updatedPosition) =>
+                    _updatePosition(item.id, updatedPosition),
+                onEnsureSelected: () =>
+                    setState(() => _selectedItemId = item.id),
+              ),
             ),
           ),
         );
@@ -396,16 +420,75 @@ class _YourRoomPageState extends ConsumerState<YourRoomPage> {
     if (layout == null) return null;
 
     final bounds = _contentBounds[id];
+    final rotation = _rotations[id] ?? 0;
     final resolved = (bounds != null && bounds.width > 0 && bounds.height > 0)
         ? bounds
         : Rect.fromLTWH(0, 0, layout.size.width, layout.size.height);
 
-    return Rect.fromLTWH(
-      layout.topLeft.dx + resolved.left - _SelectionFrame.padding.left,
-      layout.topLeft.dy + resolved.top - _SelectionFrame.padding.top,
-      resolved.width + _SelectionFrame.padding.horizontal,
-      resolved.height + _SelectionFrame.padding.vertical,
-    );
+    return _buildSelectionRect(layout, resolved, rotation);
+  }
+
+  Rect _buildSelectionRect(
+    RoomItemLayout layout,
+    Rect contentRect,
+    double rotation,
+  ) {
+    // Build the local (within layout) selection rect including padding.
+    final localLeft = contentRect.left - _SelectionFrame.padding.left;
+    final localTop = contentRect.top - _SelectionFrame.padding.top;
+    final localWidth = contentRect.width + _SelectionFrame.padding.horizontal;
+    final localHeight = contentRect.height + _SelectionFrame.padding.vertical;
+
+    // Compute the four corners of the local rect relative to the layout's
+    // coordinate space and then rotate them around the layout center.
+    final center = Offset(layout.size.width / 2, layout.size.height / 2);
+
+    final corners = <Offset>[
+      Offset(localLeft, localTop),
+      Offset(localLeft + localWidth, localTop),
+      Offset(localLeft + localWidth, localTop + localHeight),
+      Offset(localLeft, localTop + localHeight),
+    ];
+
+    final rotated = corners.map((pt) {
+      final dx = pt.dx - center.dx;
+      final dy = pt.dy - center.dy;
+      final cosT = math.cos(rotation);
+      final sinT = math.sin(rotation);
+      final rx = center.dx + dx * cosT - dy * sinT;
+      final ry = center.dy + dx * sinT + dy * cosT;
+      return Offset(rx, ry);
+    }).toList();
+
+    // Find axis-aligned bounding box of rotated corners in layout space.
+    var minX = double.infinity;
+    var minY = double.infinity;
+    var maxX = -double.infinity;
+    var maxY = -double.infinity;
+
+    for (final p in rotated) {
+      if (p.dx < minX) minX = p.dx;
+      if (p.dx > maxX) maxX = p.dx;
+      if (p.dy < minY) minY = p.dy;
+      if (p.dy > maxY) maxY = p.dy;
+    }
+
+    // Translate to world coordinates by adding layout.topLeft
+    final worldLeft = layout.topLeft.dx + minX;
+    final worldTop = layout.topLeft.dy + minY;
+    final worldRight = layout.topLeft.dx + maxX;
+    final worldBottom = layout.topLeft.dy + maxY;
+
+    return Rect.fromLTRB(worldLeft, worldTop, worldRight, worldBottom);
+  }
+
+  // helper functions removed; no longer used
+
+  double _normalizeAngle(double angle) {
+    const twoPi = 2 * math.pi;
+    var normalized = angle % twoPi;
+    if (normalized < 0) normalized += twoPi;
+    return normalized;
   }
 }
 
@@ -453,10 +536,12 @@ class _SelectionFrame extends StatefulWidget {
     required this.layout,
     required this.contentSize,
     required this.roomSize,
+    required this.rotation,
     required this.currentScale,
     required this.onScaleChanged,
     required this.onPositionChanged,
     required this.onEnsureSelected,
+    required this.contentRect,
   });
 
   static const double handleSize = 28;
@@ -474,10 +559,12 @@ class _SelectionFrame extends StatefulWidget {
   final RoomItemLayout layout;
   final Size contentSize;
   final Size roomSize;
+  final double rotation;
   final double currentScale;
   final ValueChanged<double> onScaleChanged;
   final ValueChanged<Offset> onPositionChanged;
   final VoidCallback onEnsureSelected;
+  final Rect contentRect;
 
   @override
   State<_SelectionFrame> createState() => _SelectionFrameState();
@@ -491,6 +578,7 @@ class _SelectionFrame extends StatefulWidget {
       ..add(DiagnosticsProperty<Size>('layoutSize', layout.size))
       ..add(DiagnosticsProperty<Size>('contentSize', contentSize))
       ..add(DiagnosticsProperty<Size>('roomSize', roomSize))
+      ..add(DoubleProperty('rotation', rotation))
       ..add(
         ObjectFlagProperty<ValueChanged<double>>.has(
           'onScaleChanged',
@@ -509,6 +597,7 @@ class _SelectionFrame extends StatefulWidget {
           onEnsureSelected,
         ),
       );
+    properties.add(DiagnosticsProperty<Rect>('contentRect', contentRect));
   }
 }
 
@@ -571,31 +660,48 @@ class _SelectionFrameState extends State<_SelectionFrame> {
 
     final overlayWidth = widget.contentSize.width + padding.horizontal;
     final overlayHeight = widget.contentSize.height + padding.vertical;
+    final overlayLeft = widget.contentRect.left - padding.left;
+    final overlayTop = widget.contentRect.top - padding.top;
 
-    return SizedBox(
-      width: overlayWidth,
-      height: overlayHeight,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Positioned.fill(
-            child: Padding(
-              padding: padding,
-              child: IgnorePointer(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    border: Border.all(
-                      color: Theme.of(context).colorScheme.primary,
-                      width: 2,
+    return Transform.rotate(
+      angle: widget.rotation,
+      alignment: Alignment.center,
+      child: SizedBox(
+        width: widget.layout.size.width,
+        height: widget.layout.size.height,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Positioned(
+              left: overlayLeft,
+              top: overlayTop,
+              width: overlayWidth,
+              height: overlayHeight,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Positioned.fill(
+                    child: Padding(
+                      padding: padding,
+                      child: IgnorePointer(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                              color: Theme.of(context).colorScheme.primary,
+                              width: 2,
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
                   ),
-                ),
+                  _buildDragHandle(),
+                  _buildResizeHandle(),
+                ],
               ),
             ),
-          ),
-          _buildDragHandle(),
-          _buildResizeHandle(),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -803,10 +909,12 @@ class _InteractiveRoomAsset extends StatefulWidget {
     required this.layout,
     required this.normalizedPosition,
     required this.scale,
+    required this.rotation,
     required this.roomSize,
     required this.onSelected,
     required this.onPositionChanged,
     required this.onScaleChanged,
+    required this.onRotationChanged,
     this.onContentBoundsChanged,
     super.key,
   });
@@ -815,10 +923,12 @@ class _InteractiveRoomAsset extends StatefulWidget {
   final RoomItemLayout layout;
   final Offset normalizedPosition;
   final double scale;
+  final double rotation;
   final Size roomSize;
   final VoidCallback onSelected;
   final ValueChanged<Offset> onPositionChanged;
   final ValueChanged<double> onScaleChanged;
+  final ValueChanged<double> onRotationChanged;
   final ValueChanged<Rect>? onContentBoundsChanged;
 
   static const minScale = 0.5;
@@ -854,6 +964,12 @@ class _InteractiveRoomAsset extends StatefulWidget {
         ),
       )
       ..add(
+        ObjectFlagProperty<ValueChanged<double>>.has(
+          'onRotationChanged',
+          onRotationChanged,
+        ),
+      )
+      ..add(
         ObjectFlagProperty<ValueChanged<Rect>>.has(
           'onContentBoundsChanged',
           onContentBoundsChanged,
@@ -870,6 +986,8 @@ class _InteractiveRoomAssetState extends State<_InteractiveRoomAsset> {
   late Offset _pivotDelta;
   var _isInteracting = false;
   var _interactionActive = false;
+  late double _startRotation;
+  static const double _snapThreshold = math.pi / 36;
 
   ImageStream? _imageStream;
   ImageStreamListener? _imageListener;
@@ -885,6 +1003,7 @@ class _InteractiveRoomAssetState extends State<_InteractiveRoomAsset> {
     _startFocalNormalized = _computeFocalNormalized(Offset.zero);
     _startGlobalFocalPoint = Offset.zero;
     _pivotDelta = _startPosition - _startFocalNormalized;
+    _startRotation = widget.rotation;
     _resolveImage();
   }
 
@@ -904,6 +1023,7 @@ class _InteractiveRoomAssetState extends State<_InteractiveRoomAsset> {
       _startScale = widget.scale;
       _startFocalNormalized = _computeFocalNormalized(Offset.zero);
       _pivotDelta = _startPosition - _startFocalNormalized;
+      _startRotation = widget.rotation;
     }
   }
 
@@ -940,6 +1060,7 @@ class _InteractiveRoomAssetState extends State<_InteractiveRoomAsset> {
         _isInteracting = true;
         _startPosition = widget.normalizedPosition;
         _startScale = widget.scale;
+        _startRotation = widget.rotation;
         _startFocalNormalized = _computeFocalNormalized(local);
         _pivotDelta = _startPosition - _startFocalNormalized;
         _startGlobalFocalPoint = details.focalPoint;
@@ -958,6 +1079,10 @@ class _InteractiveRoomAssetState extends State<_InteractiveRoomAsset> {
         );
         widget.onScaleChanged(nextScale);
 
+        final rawRotation = _startRotation + details.rotation;
+        final snappedRotation = _applySnap(rawRotation);
+        widget.onRotationChanged(snappedRotation);
+
         final scaleRatio = _startScale == 0 ? 1.0 : nextScale / _startScale;
         final pivotNormalized = _startFocalNormalized + normalizedTranslation;
         final anchorNormalized = pivotNormalized + (_pivotDelta * scaleRatio);
@@ -967,8 +1092,11 @@ class _InteractiveRoomAssetState extends State<_InteractiveRoomAsset> {
         if (!_interactionActive) return;
         _interactionActive = false;
         _isInteracting = false;
+        final snappedRotation = _applySnap(widget.rotation);
+        widget.onRotationChanged(snappedRotation);
         _startPosition = widget.normalizedPosition;
         _startScale = widget.scale;
+        _startRotation = snappedRotation;
         _startFocalNormalized = _computeFocalNormalized(Offset.zero);
         _pivotDelta = _startPosition - _startFocalNormalized;
       },
@@ -978,9 +1106,13 @@ class _InteractiveRoomAssetState extends State<_InteractiveRoomAsset> {
         child: SizedBox(
           width: widget.layout.size.width,
           height: widget.layout.size.height,
-          child: _RoomAssetImage(
-            assetName: widget.item.assetName,
-            semanticLabel: widget.item.semanticLabel,
+          child: Transform.rotate(
+            angle: widget.rotation,
+            alignment: Alignment.center,
+            child: _RoomAssetImage(
+              assetName: widget.item.assetName,
+              semanticLabel: widget.item.semanticLabel,
+            ),
           ),
         ),
       ),
@@ -1097,6 +1229,60 @@ class _InteractiveRoomAssetState extends State<_InteractiveRoomAsset> {
         (a.height - b.height).abs() < epsilon;
   }
 
+  Offset _toUnrotated(Offset point, double angle) {
+    if (angle == 0) return point;
+    final center = Offset(
+      widget.layout.size.width / 2,
+      widget.layout.size.height / 2,
+    );
+
+    final dx = point.dx - center.dx;
+    final dy = point.dy - center.dy;
+    final cosTheta = math.cos(-angle);
+    final sinTheta = math.sin(-angle);
+
+    return Offset(
+      center.dx + dx * cosTheta - dy * sinTheta,
+      center.dy + dx * sinTheta + dy * cosTheta,
+    );
+  }
+
+  double _normalizeAngle(double angle) {
+    const twoPi = 2 * math.pi;
+    var normalized = angle % twoPi;
+    if (normalized < 0) normalized += twoPi;
+    return normalized;
+  }
+
+  double _applySnap(double angle) {
+    final base = _normalizeAngle(angle);
+    final snaps = <double>[
+      0,
+      math.pi / 2,
+      math.pi,
+      3 * math.pi / 2,
+      2 * math.pi,
+    ];
+
+    var closest = base;
+    var minDiff = double.infinity;
+    for (final target in snaps) {
+      var diff = (base - target).abs();
+      if (diff > math.pi) diff = 2 * math.pi - diff;
+      if (diff < minDiff) {
+        minDiff = diff;
+        closest = target;
+      }
+    }
+
+    if (minDiff <= _snapThreshold) {
+      final correction = angle - base;
+      return correction + closest;
+    }
+
+    return angle;
+  }
+
   bool _isOpaqueHit(Offset localPosition) {
     final image = _decodedImage;
     final bytes = _decodedBytes;
@@ -1139,12 +1325,13 @@ class _InteractiveRoomAssetState extends State<_InteractiveRoomAsset> {
       return false;
     }
 
+    final unrotated = _toUnrotated(localPosition, widget.rotation);
     final bounds = _lastContentBounds;
     if (bounds != null) {
-      return bounds.contains(localPosition);
+      return bounds.contains(unrotated);
     }
 
-    return _isOpaqueHit(localPosition);
+    return _isOpaqueHit(unrotated);
   }
 }
 
