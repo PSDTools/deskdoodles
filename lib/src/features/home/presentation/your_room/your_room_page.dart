@@ -95,6 +95,7 @@ class _YourRoomPageState extends ConsumerState<YourRoomPage> {
   late Map<String, Offset> _positions;
   late Map<String, double> _scales;
   String? _selectedItemId;
+  final _contentBounds = <String, Rect>{};
 
   @override
   void initState() {
@@ -106,6 +107,25 @@ class _YourRoomPageState extends ConsumerState<YourRoomPage> {
     _scales = {
       for (final item in YourRoomPage._items) item.id: 1,
     };
+  }
+
+  static const _fullBounds = Rect.fromLTWH(0, 0, 1, 1);
+
+  void _updateContentBounds(String id, Rect bounds) {
+    final current = _contentBounds[id];
+    if (current != null && _rectsClose(current, bounds)) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() => _contentBounds[id] = bounds);
+    });
+  }
+
+  bool _rectsClose(Rect a, Rect b, [double epsilon = 0.001]) {
+    return (a.left - b.left).abs() < epsilon &&
+        (a.top - b.top).abs() < epsilon &&
+        (a.width - b.width).abs() < epsilon &&
+        (a.height - b.height).abs() < epsilon;
   }
 
   void _updatePosition(String id, Offset newPosition) {
@@ -211,6 +231,21 @@ class _YourRoomPageState extends ConsumerState<YourRoomPage> {
         normalizedPosition: normalizedPosition,
         scale: scale,
       );
+      final boundsNormalized = _contentBounds[item.id] ?? _fullBounds;
+      final hasValidBounds =
+          boundsNormalized.width > 0 && boundsNormalized.height > 0;
+      final contentTopLeft = hasValidBounds
+          ? Offset(
+              layout.topLeft.dx + layout.size.width * boundsNormalized.left,
+              layout.topLeft.dy + layout.size.height * boundsNormalized.top,
+            )
+          : layout.topLeft;
+      final effectiveContentSize = hasValidBounds
+          ? Size(
+              layout.size.width * boundsNormalized.width,
+              layout.size.height * boundsNormalized.height,
+            )
+          : layout.size;
 
       widgets.add(
         Positioned(
@@ -237,6 +272,8 @@ class _YourRoomPageState extends ConsumerState<YourRoomPage> {
                   _updatePosition(item.id, updatedPosition),
               onScaleChanged: (updatedScale) =>
                   _updateScale(item.id, updatedScale),
+              onContentBoundsChanged: (bounds) =>
+                  _updateContentBounds(item.id, bounds),
             ),
           ),
         ),
@@ -245,18 +282,18 @@ class _YourRoomPageState extends ConsumerState<YourRoomPage> {
       if (_selectedItemId == item.id) {
         widgets.add(
           Positioned(
-            left: layout.topLeft.dx - _SelectionFrame.horizontalPadding,
-            top: layout.topLeft.dy - _SelectionFrame.topPadding,
-            width: layout.size.width + _SelectionFrame.horizontalPadding * 2,
+            left: contentTopLeft.dx - _SelectionFrame.padding.left,
+            top: contentTopLeft.dy - _SelectionFrame.padding.top,
+            width:
+                effectiveContentSize.width + _SelectionFrame.padding.horizontal,
             height:
-                layout.size.height +
-                _SelectionFrame.topPadding +
-                _SelectionFrame.bottomPadding,
+                effectiveContentSize.height + _SelectionFrame.padding.vertical,
             child: _SelectionFrame(
               item: item,
               layout: layout,
               roomSize: roomSize,
               currentScale: scale,
+              contentSize: effectiveContentSize,
               onScaleChanged: (value) => _updateScale(item.id, value),
               onPositionChanged: (updatedPosition) =>
                   _updatePosition(item.id, updatedPosition),
@@ -312,6 +349,7 @@ class _SelectionFrame extends StatefulWidget {
   const _SelectionFrame({
     required this.item,
     required this.layout,
+    required this.contentSize,
     required this.roomSize,
     required this.currentScale,
     required this.onScaleChanged,
@@ -322,9 +360,16 @@ class _SelectionFrame extends StatefulWidget {
   static const double horizontalPadding = handleSize * 0.6;
   static const double topPadding = handleSize * 1.6;
   static const double bottomPadding = handleSize * 1.0;
+  static const padding = EdgeInsets.only(
+    left: horizontalPadding,
+    right: horizontalPadding,
+    top: topPadding,
+    bottom: bottomPadding,
+  );
 
   final RoomItem item;
   final RoomItemLayout layout;
+  final Size contentSize;
   final Size roomSize;
   final double currentScale;
   final ValueChanged<double> onScaleChanged;
@@ -340,6 +385,7 @@ class _SelectionFrame extends StatefulWidget {
       ..add(StringProperty('itemId', item.id))
       ..add(DoubleProperty('currentScale', currentScale))
       ..add(DiagnosticsProperty<Size>('layoutSize', layout.size))
+      ..add(DiagnosticsProperty<Size>('contentSize', contentSize))
       ..add(DiagnosticsProperty<Size>('roomSize', roomSize))
       ..add(
         ObjectFlagProperty<ValueChanged<double>>.has(
@@ -411,14 +457,10 @@ class _SelectionFrameState extends State<_SelectionFrame> {
 
   @override
   Widget build(BuildContext context) {
-    const extraSide = _SelectionFrame.horizontalPadding;
-    const extraTop = _SelectionFrame.topPadding;
-    const extraBottom = _SelectionFrame.bottomPadding;
+    const padding = _SelectionFrame.padding;
 
-    final overlayWidth = widget.layout.size.width + extraSide * 2;
-    final overlayHeight = widget.layout.size.height + extraTop + extraBottom;
-    const borderLeft = extraSide;
-    const borderTop = extraTop;
+    final overlayWidth = widget.contentSize.width + padding.horizontal;
+    final overlayHeight = widget.contentSize.height + padding.vertical;
 
     return SizedBox(
       width: overlayWidth,
@@ -426,17 +468,16 @@ class _SelectionFrameState extends State<_SelectionFrame> {
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          Positioned(
-            left: borderLeft,
-            top: borderTop,
-            width: widget.layout.size.width,
-            height: widget.layout.size.height,
-            child: IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  border: Border.all(
-                    color: Theme.of(context).colorScheme.primary,
-                    width: 2,
+          Positioned.fill(
+            child: Padding(
+              padding: padding,
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.primary,
+                      width: 2,
+                    ),
                   ),
                 ),
               ),
@@ -450,14 +491,13 @@ class _SelectionFrameState extends State<_SelectionFrame> {
   }
 
   Widget _buildDragHandle() {
-    const borderLeft = _SelectionFrame.horizontalPadding;
-    const borderTop = _SelectionFrame.topPadding;
-    var dragTop = borderTop - _handleSize * 0.9;
+    const padding = _SelectionFrame.padding;
+    var dragTop = padding.top - _handleSize * 0.9;
     if (dragTop < 0) {
       dragTop = 0;
     }
     final dragLeft =
-        borderLeft + widget.layout.size.width / 2 - _handleSize / 2;
+        padding.left + widget.contentSize.width / 2 - _handleSize / 2;
 
     return Positioned(
       top: dragTop,
@@ -519,11 +559,10 @@ class _SelectionFrameState extends State<_SelectionFrame> {
   }
 
   Widget _buildResizeHandle() {
-    const borderLeft = _SelectionFrame.horizontalPadding;
-    const borderTop = _SelectionFrame.topPadding;
+    const padding = _SelectionFrame.padding;
 
-    final left = borderLeft + widget.layout.size.width - _handleSize * 0.5;
-    final top = borderTop + widget.layout.size.height - _handleSize * 0.5;
+    final left = padding.left + widget.contentSize.width - _handleSize * 0.5;
+    final top = padding.top + widget.contentSize.height - _handleSize * 0.5;
 
     return Positioned(
       left: left,
@@ -646,6 +685,7 @@ class _InteractiveRoomAsset extends StatefulWidget {
     required this.onSelected,
     required this.onPositionChanged,
     required this.onScaleChanged,
+    this.onContentBoundsChanged,
   });
 
   final RoomItem item;
@@ -656,6 +696,7 @@ class _InteractiveRoomAsset extends StatefulWidget {
   final VoidCallback onSelected;
   final ValueChanged<Offset> onPositionChanged;
   final ValueChanged<double> onScaleChanged;
+  final ValueChanged<Rect>? onContentBoundsChanged;
 
   static const minScale = 0.5;
   static const maxScale = 2.5;
@@ -688,6 +729,12 @@ class _InteractiveRoomAsset extends StatefulWidget {
           'onScaleChanged',
           onScaleChanged,
         ),
+      )
+      ..add(
+        ObjectFlagProperty<ValueChanged<Rect>>.has(
+          'onContentBoundsChanged',
+          onContentBoundsChanged,
+        ),
       );
   }
 }
@@ -704,6 +751,7 @@ class _InteractiveRoomAssetState extends State<_InteractiveRoomAsset> {
   ImageStreamListener? _imageListener;
   ui.Image? _decodedImage;
   ByteData? _decodedBytes;
+  Rect? _lastContentBounds;
 
   @override
   void initState() {
@@ -721,6 +769,11 @@ class _InteractiveRoomAssetState extends State<_InteractiveRoomAsset> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.item.assetName != widget.item.assetName) {
       _resolveImage();
+    }
+    if (widget.onContentBoundsChanged != null &&
+        _decodedImage != null &&
+        _decodedBytes != null) {
+      _maybeNotifyContentBounds();
     }
     if (!_isInteracting) {
       _startPosition = widget.normalizedPosition;
@@ -814,12 +867,79 @@ class _InteractiveRoomAssetState extends State<_InteractiveRoomAsset> {
     _imageListener = ImageStreamListener((imageInfo, _) async {
       _decodedImage = imageInfo.image;
       _decodedBytes = await imageInfo.image.toByteData();
+      _maybeNotifyContentBounds();
       if (mounted) {
         setState(() {});
       }
     });
 
     stream.addListener(_imageListener!);
+  }
+
+  void _maybeNotifyContentBounds() {
+    final image = _decodedImage;
+    final bytes = _decodedBytes;
+    final callback = widget.onContentBoundsChanged;
+
+    if (image == null || bytes == null || callback == null) return;
+
+    final bounds = _calculateContentBoundsNormalized(image, bytes);
+
+    if (_lastContentBounds != null &&
+        _rectsClose(_lastContentBounds!, bounds)) {
+      return;
+    }
+
+    _lastContentBounds = bounds;
+    callback(bounds);
+  }
+
+  Rect _calculateContentBoundsNormalized(ui.Image image, ByteData bytes) {
+    final width = image.width;
+    final height = image.height;
+
+    var minX = width;
+    var minY = height;
+    var maxX = -1;
+    var maxY = -1;
+
+    final totalLength = bytes.lengthInBytes;
+    final rowBytes = totalLength ~/ height;
+    final lastValidIndex = totalLength - 4;
+
+    for (var y = 0; y < height; y++) {
+      for (var x = 0; x < width; x++) {
+        final offset = y * rowBytes + x * 4;
+        if (offset > lastValidIndex) continue;
+        if (offset + 3 > lastValidIndex) continue;
+        final alpha = bytes.getUint8(offset + 3);
+
+        if (alpha > 10) {
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        }
+      }
+    }
+
+    if (maxX < minX || maxY < minY) {
+      return const Rect.fromLTWH(0, 0, 1, 1);
+    }
+
+    final left = minX / width;
+    final top = minY / height;
+    final right = (maxX + 1) / width;
+    final bottom = (maxY + 1) / height;
+
+    return Rect.fromLTRB(left, top, right, bottom);
+  }
+
+  bool _rectsClose(Rect a, Rect b, [double epsilon = 0.001]) {
+    return (a.left - b.left).abs() < epsilon &&
+        (a.top - b.top).abs() < epsilon &&
+        (a.width - b.width).abs() < epsilon &&
+        (a.height - b.height).abs() < epsilon;
   }
 
   bool _isOpaqueHit(Offset localPosition) {
