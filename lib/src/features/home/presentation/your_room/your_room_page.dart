@@ -844,7 +844,10 @@ class _SelectionFrameState extends State<_SelectionFrame> {
         onPointerMove: (event) {
           if (!_resizing) return;
           final rawDelta = event.delta;
-          final unrotatedDelta = _rotateDeltaToUnrotated(rawDelta, widget.rotation);
+          final unrotatedDelta = _rotateDeltaToUnrotated(
+            rawDelta,
+            widget.rotation,
+          );
           _resizeAccumulated += unrotatedDelta;
 
           final targetWidth = (_initialWidth + _resizeAccumulated.dx).clamp(
