@@ -346,31 +346,54 @@ class _YourRoomPageState extends ConsumerState<YourRoomPage> {
       );
 
       if (_selectedItemId == item.id) {
-        // Position the selection overlay at the asset's layout top-left
-        // and give it the full layout size so the internal Transform.rotate
-        // rotates around the asset center correctly.
+        // Compute the axis-aligned bounding box of the rotated selection
+        // (world coordinates) so the overlay covers the rotated visuals
+        // and handles remain hit-testable even when they extend outside
+        // the original layout bounds.
+        final selectionRect = _buildSelectionRect(
+          layout,
+          resolvedRect,
+          rotation,
+        );
+
+        // Inside the overlay, place the selection frame at an offset so
+        // its local (layout) origin matches the original layout.topLeft.
+        final innerLeft = layout.topLeft.dx - selectionRect.left;
+        final innerTop = layout.topLeft.dy - selectionRect.top;
+
         widgets.add(
           Positioned(
-            left: layout.topLeft.dx,
-            top: layout.topLeft.dy,
-            width: layout.size.width,
-            height: layout.size.height,
+            left: selectionRect.left,
+            top: selectionRect.top,
+            width: selectionRect.width,
+            height: selectionRect.height,
             child: SizedBox(
-              width: layout.size.width,
-              height: layout.size.height,
-              child: _SelectionFrame(
-                item: item,
-                layout: layout,
-                roomSize: roomSize,
-                rotation: rotation,
-                currentScale: scale,
-                contentSize: effectiveContentSize,
-                contentRect: resolvedRect,
-                onScaleChanged: (value) => _updateScale(item.id, value),
-                onPositionChanged: (updatedPosition) =>
-                    _updatePosition(item.id, updatedPosition),
-                onEnsureSelected: () =>
-                    setState(() => _selectedItemId = item.id),
+              width: selectionRect.width,
+              height: selectionRect.height,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Positioned(
+                    left: innerLeft,
+                    top: innerTop,
+                    width: layout.size.width,
+                    height: layout.size.height,
+                    child: _SelectionFrame(
+                      item: item,
+                      layout: layout,
+                      roomSize: roomSize,
+                      rotation: rotation,
+                      currentScale: scale,
+                      contentSize: effectiveContentSize,
+                      contentRect: resolvedRect,
+                      onScaleChanged: (value) => _updateScale(item.id, value),
+                      onPositionChanged: (updatedPosition) =>
+                          _updatePosition(item.id, updatedPosition),
+                      onEnsureSelected: () =>
+                          setState(() => _selectedItemId = item.id),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -618,6 +641,17 @@ class _SelectionFrameState extends State<_SelectionFrame> {
   late Offset _initialTopLeft;
   Offset _resizeAccumulated = Offset.zero;
 
+  // Rotate a world-space delta into the layout's unrotated local space.
+  Offset _rotateDeltaToUnrotated(Offset delta, double rotation) {
+    if (rotation == 0) return delta;
+    final cosT = math.cos(-rotation);
+    final sinT = math.sin(-rotation);
+    return Offset(
+      delta.dx * cosT - delta.dy * sinT,
+      delta.dx * sinT + delta.dy * cosT,
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -790,12 +824,9 @@ class _SelectionFrameState extends State<_SelectionFrame> {
     return Positioned(
       left: left,
       top: top,
-      child: GestureDetector(
+      child: Listener(
         behavior: HitTestBehavior.opaque,
-        dragStartBehavior: DragStartBehavior.down,
-        onPanDown: (_) => widget.onEnsureSelected(),
-        onTapDown: (_) => widget.onEnsureSelected(),
-        onPanStart: (_) {
+        onPointerDown: (event) {
           widget.onEnsureSelected();
           _resizing = true;
           _initialScale = widget.currentScale;
@@ -810,8 +841,12 @@ class _SelectionFrameState extends State<_SelectionFrame> {
               : _initialHeight / _initialScale;
           _resizeAccumulated = Offset.zero;
         },
-        onPanUpdate: (details) {
-          _resizeAccumulated += details.delta;
+        onPointerMove: (event) {
+          if (!_resizing) return;
+          final rawDelta = event.delta;
+          final unrotatedDelta = _rotateDeltaToUnrotated(rawDelta, widget.rotation);
+          _resizeAccumulated += unrotatedDelta;
+
           final targetWidth = (_initialWidth + _resizeAccumulated.dx).clamp(
             24,
             widget.roomSize.width,
@@ -847,7 +882,8 @@ class _SelectionFrameState extends State<_SelectionFrame> {
           widget.onScaleChanged(nextScale);
           widget.onPositionChanged(normalized);
         },
-        onPanEnd: (_) {
+        onPointerUp: (event) {
+          if (!_resizing) return;
           _resizing = false;
           _initialScale = widget.currentScale;
           _initialWidth = widget.layout.size.width;
@@ -856,6 +892,11 @@ class _SelectionFrameState extends State<_SelectionFrame> {
           final safeScale = _initialScale == 0 ? 1.0 : _initialScale;
           _baseWidth = _initialWidth / safeScale;
           _baseHeight = _initialHeight / safeScale;
+          _resizeAccumulated = Offset.zero;
+        },
+        onPointerCancel: (event) {
+          if (!_resizing) return;
+          _resizing = false;
           _resizeAccumulated = Offset.zero;
         },
         child: const _HandleVisual(
