@@ -163,59 +163,81 @@ class _YourRoomPageState extends ConsumerState<YourRoomPage> {
             MediaQuery.sizeOf(context),
           );
           final floorHeight = roomSize.height * 0.18;
+          final availableSize = constraints.biggest;
+          final originX = availableSize.width.isFinite
+              ? (availableSize.width - roomSize.width) / 2
+              : 0.0;
+          final originY = availableSize.height.isFinite
+              ? (availableSize.height - roomSize.height) / 2
+              : 0.0;
+          final roomOrigin = Offset(originX, originY);
 
-          return Center(
-            child: SizedBox(
-              width: roomSize.width,
-              height: roomSize.height,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  Positioned.fill(
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.translucent,
-                      onTapDown: (details) => _handleTap(details.localPosition),
-                    ),
-                  ),
-                  const DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Color(0xFFF8E6CE),
-                          Color(0xFF173E96),
-                        ],
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: floorHeight,
-                    child: const SizedBox(
-                      height: 6,
-                      child: DecoratedBox(
+          return GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onTapDown: (details) {
+              final position = details.localPosition;
+              final insideRoom = position.dx >= roomOrigin.dx &&
+                  position.dy >= roomOrigin.dy &&
+                  position.dx <= roomOrigin.dx + roomSize.width &&
+                  position.dy <= roomOrigin.dy + roomSize.height;
+
+              if (insideRoom) {
+                _handleTap(position - roomOrigin);
+              } else {
+                _clearSelection();
+              }
+            },
+            child: Stack(
+              children: [
+                Positioned(
+                  left: roomOrigin.dx,
+                  top: roomOrigin.dy,
+                  width: roomSize.width,
+                  height: roomSize.height,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      const DecoratedBox(
                         decoration: BoxDecoration(
-                          color: Color(0xFF2F1B0F),
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Color(0xFFF8E6CE),
+                              Color(0xFF173E96),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                  ),
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    height: floorHeight,
-                    child: const DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: Color(0xFF5F3A1B),
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: floorHeight,
+                        child: const SizedBox(
+                          height: 6,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: Color(0xFF2F1B0F),
+                            ),
+                          ),
+                        ),
                       ),
-                    ),
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        height: floorHeight,
+                        child: const DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: Color(0xFF5F3A1B),
+                          ),
+                        ),
+                      ),
+                      ..._buildRoomItems(roomSize),
+                    ],
                   ),
-                  ..._buildRoomItems(roomSize),
-                ],
-              ),
+                ),
+              ],
             ),
           );
         },
@@ -346,9 +368,12 @@ class _YourRoomPageState extends ConsumerState<YourRoomPage> {
       return;
     }
 
-    if (_selectedItemId != null) {
-      setState(() => _selectedItemId = null);
-    }
+    _clearSelection();
+  }
+
+  void _clearSelection() {
+    if (_selectedItemId == null) return;
+    setState(() => _selectedItemId = null);
   }
 }
 
@@ -1084,14 +1109,21 @@ class _InteractiveRoomAssetState extends State<_InteractiveRoomAsset> {
 
     final bounds = _lastContentBounds;
     if (bounds != null) {
-      // If we're inside the trimmed content bounds, accept the hit even if the
-      // specific pixel is transparent. This keeps the interaction area aligned
-      // with the furthest non-transparent pixel in any direction.
-      if (bounds.contains(localPosition)) {
+      final expanded = Rect.fromLTRB(
+        (bounds.left - _SelectionFrame.padding.left)
+            .clamp(0.0, widget.layout.size.width),
+        (bounds.top - _SelectionFrame.padding.top)
+            .clamp(0.0, widget.layout.size.height),
+        (bounds.right + _SelectionFrame.padding.right)
+            .clamp(0.0, widget.layout.size.width),
+        (bounds.bottom + _SelectionFrame.padding.bottom)
+            .clamp(0.0, widget.layout.size.height),
+      );
+
+      if (expanded.contains(localPosition)) {
         return true;
       }
 
-      // Outside the bounds? Then there is no opaque content further out.
       return false;
     }
 
