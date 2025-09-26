@@ -6,6 +6,7 @@ import 'package:auto_route/auto_route.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../domain/room_item_entity.dart';
 
@@ -283,12 +284,17 @@ class _YourRoomPageState extends ConsumerState<YourRoomPage> {
       final normalizedPosition = _positions[item.id] ?? item.defaultPosition;
       final scale = _scales[item.id] ?? 1;
       final rotation = _rotations[item.id] ?? 0;
+      final boundsRect = _contentBounds[item.id];
+      final preferredAspectRatio =
+          boundsRect != null && boundsRect.width > 0 && boundsRect.height > 0
+          ? boundsRect.width / boundsRect.height
+          : null;
       final layout = item.layoutFor(
         availableSize: roomSize,
         normalizedPosition: normalizedPosition,
         scale: scale,
+        preferredAspectRatio: preferredAspectRatio,
       );
-      final boundsRect = _contentBounds[item.id];
       final resolvedRect =
           (boundsRect != null && boundsRect.width > 0 && boundsRect.height > 0)
           ? boundsRect
@@ -419,7 +425,8 @@ class _YourRoomPageState extends ConsumerState<YourRoomPage> {
 
       if (layout != null && state != null) {
         final local = localPosition - layout.topLeft;
-        if (!state.hitTestLocal(local)) {
+        final isSelected = id == _selectedItemId;
+        if (!state.hitTestLocal(local) && !isSelected) {
           continue;
         }
       }
@@ -457,10 +464,12 @@ class _YourRoomPageState extends ConsumerState<YourRoomPage> {
     double rotation,
   ) {
     // Build the local (within layout) selection rect including padding.
-    final localLeft = contentRect.left - _SelectionFrame.padding.left;
-    final localTop = contentRect.top - _SelectionFrame.padding.top;
-    final localWidth = contentRect.width + _SelectionFrame.padding.horizontal;
-    final localHeight = contentRect.height + _SelectionFrame.padding.vertical;
+    const padding = _SelectionFrame.padding;
+    const hitInset = _SelectionFrame.handleHitInset;
+    final localLeft = contentRect.left - padding.left - hitInset;
+    final localTop = contentRect.top - padding.top - hitInset;
+    final localWidth = contentRect.width + padding.horizontal + hitInset * 2;
+    final localHeight = contentRect.height + padding.vertical + hitInset * 2;
 
     // Compute the four corners of the local rect relative to the layout's
     // coordinate space and then rotate them around the layout center.
@@ -571,6 +580,8 @@ class _SelectionFrame extends StatefulWidget {
   static const double horizontalPadding = handleSize * 0.6;
   static const double topPadding = handleSize * 1.6;
   static const double bottomPadding = handleSize * 1.0;
+  static const double handleHitSize = 44;
+  static const double handleHitInset = (handleHitSize - handleSize) / 2;
   static const padding = EdgeInsets.only(
     left: horizontalPadding,
     right: horizontalPadding,
@@ -626,12 +637,16 @@ class _SelectionFrame extends StatefulWidget {
 
 class _SelectionFrameState extends State<_SelectionFrame> {
   static const double _handleSize = _SelectionFrame.handleSize;
+  static const double _handleHitSize = _SelectionFrame.handleHitSize;
+  static const double _handleHitInset = _SelectionFrame.handleHitInset;
 
   var _dragging = false;
   var _resizing = false;
 
   late Offset _dragAnchorWorldOrigin;
   Offset _dragAnchorDelta = Offset.zero;
+  Offset? _dragLastLocalPosition;
+  Offset? _dragLastGlobalPosition;
 
   late double _initialScale;
   late double _initialWidth;
@@ -640,6 +655,8 @@ class _SelectionFrameState extends State<_SelectionFrame> {
   late double _baseHeight;
   late Offset _initialTopLeft;
   Offset _resizeAccumulated = Offset.zero;
+  late Offset _initialContentLocal;
+  late Offset _initialContentTopLeftWorld;
 
   // Rotate a world-space delta into the layout's unrotated local space.
   Offset _rotateDeltaToUnrotated(Offset delta, double rotation) {
@@ -649,6 +666,51 @@ class _SelectionFrameState extends State<_SelectionFrame> {
     return Offset(
       delta.dx * cosT - delta.dy * sinT,
       delta.dx * sinT + delta.dy * cosT,
+    );
+  }
+
+  Offset _rotateVector(Offset vector, double angle) {
+    if (angle == 0) return vector;
+    final cosT = math.cos(angle);
+    final sinT = math.sin(angle);
+    return Offset(
+      vector.dx * cosT - vector.dy * sinT,
+      vector.dx * sinT + vector.dy * cosT,
+    );
+  }
+
+  Offset _contentTopLeftWorld({
+    required Offset topLeft,
+    required Size size,
+    required Rect contentRect,
+    required double rotation,
+  }) {
+    final halfSize = Offset(size.width / 2, size.height / 2);
+    final local = contentRect.topLeft;
+    final rotated = _rotateVector(local - halfSize, rotation);
+    return topLeft + halfSize + rotated;
+  }
+
+  Offset _resolveTopLeftFromPivot({
+    required Offset pivotWorld,
+    required Size size,
+    required Offset pivotLocal,
+    required double rotation,
+  }) {
+    final halfSize = Offset(size.width / 2, size.height / 2);
+    final rotated = _rotateVector(pivotLocal - halfSize, rotation);
+    return pivotWorld - halfSize - rotated;
+  }
+
+  void _syncContentMetrics({Offset? topLeftOverride, Size? sizeOverride}) {
+    final topLeft = topLeftOverride ?? widget.layout.topLeft;
+    final size = sizeOverride ?? widget.layout.size;
+    _initialContentLocal = widget.contentRect.topLeft;
+    _initialContentTopLeftWorld = _contentTopLeftWorld(
+      topLeft: topLeft,
+      size: size,
+      contentRect: widget.contentRect,
+      rotation: widget.rotation,
     );
   }
 
@@ -665,6 +727,8 @@ class _SelectionFrameState extends State<_SelectionFrame> {
       _dragAnchorWorldOrigin = widget.layout.anchorWorld;
       _initialTopLeft = widget.layout.topLeft;
       _dragAnchorDelta = Offset.zero;
+      _dragLastLocalPosition = null;
+      _dragLastGlobalPosition = null;
     }
     if (!_resizing) {
       _initialScale = widget.currentScale;
@@ -674,6 +738,10 @@ class _SelectionFrameState extends State<_SelectionFrame> {
       _baseWidth = _initialWidth / safeScale;
       _baseHeight = _initialHeight / safeScale;
       _resizeAccumulated = Offset.zero;
+      _syncContentMetrics(
+        topLeftOverride: widget.layout.topLeft,
+        sizeOverride: widget.layout.size,
+      );
     }
   }
 
@@ -686,16 +754,26 @@ class _SelectionFrameState extends State<_SelectionFrame> {
     final safeScale = _initialScale == 0 ? 1.0 : _initialScale;
     _baseWidth = _initialWidth / safeScale;
     _baseHeight = _initialHeight / safeScale;
+    _resizeAccumulated = Offset.zero;
+    _dragLastLocalPosition = null;
+    _dragLastGlobalPosition = null;
+    _syncContentMetrics(
+      topLeftOverride: _initialTopLeft,
+      sizeOverride: Size(_initialWidth, _initialHeight),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     const padding = _SelectionFrame.padding;
+    const hitInset = _SelectionFrame.handleHitInset;
 
-    final overlayWidth = widget.contentSize.width + padding.horizontal;
-    final overlayHeight = widget.contentSize.height + padding.vertical;
-    final overlayLeft = widget.contentRect.left - padding.left;
-    final overlayTop = widget.contentRect.top - padding.top;
+    final overlayWidth =
+        widget.contentSize.width + padding.horizontal + hitInset * 2;
+    final overlayHeight =
+        widget.contentSize.height + padding.vertical + hitInset * 2;
+    final overlayLeft = widget.contentRect.left - padding.left - hitInset;
+    final overlayTop = widget.contentRect.top - padding.top - hitInset;
 
     return Transform.rotate(
       angle: widget.rotation,
@@ -742,74 +820,98 @@ class _SelectionFrameState extends State<_SelectionFrame> {
 
   Widget _buildDragHandle() {
     const padding = _SelectionFrame.padding;
-    var dragTop = padding.top - _handleSize * 0.9;
+    var dragTop = padding.top - _handleSize * 0.9 - _handleHitInset;
     if (dragTop < 0) {
       dragTop = 0;
     }
     final dragLeft =
-        padding.left + widget.contentSize.width / 2 - _handleSize / 2;
+        padding.left + widget.contentSize.width / 2 - _handleHitSize / 2;
 
     return Positioned(
       top: dragTop,
       left: dragLeft,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        dragStartBehavior: DragStartBehavior.down,
-        onPanDown: (details) {
-          widget.onEnsureSelected();
-          developer.log(
-            'drag panDown position=${details.localPosition}',
-            name: 'selection.${widget.item.id}',
-          );
-        },
-        onTapDown: (_) {
-          widget.onEnsureSelected();
-          developer.log(
-            'drag handle tap',
-            name: 'selection.${widget.item.id}',
-          );
-        },
-        onPanStart: (_) {
-          widget.onEnsureSelected();
-          _dragging = true;
-          _dragAnchorWorldOrigin = widget.layout.anchorWorld;
-          _dragAnchorDelta = Offset.zero;
-          developer.log(
-            'drag start anchor=$_dragAnchorWorldOrigin',
-            name: 'selection.${widget.item.id}',
-          );
-        },
-        onPanUpdate: (details) {
-          _dragAnchorDelta += details.delta;
-          developer.log(
-            'drag delta=$_dragAnchorDelta',
-            name: 'selection.${widget.item.id}',
-          );
-          final newAnchorWorld = _dragAnchorWorldOrigin + _dragAnchorDelta;
-          final normalized = Offset(
-            newAnchorWorld.dx / widget.roomSize.width,
-            newAnchorWorld.dy / widget.roomSize.height,
-          );
-          developer.log(
-            'drag normalized=$normalized room=${widget.roomSize}',
-            name: 'selection.${widget.item.id}',
-          );
+      child: SizedBox(
+        width: _handleHitSize,
+        height: _handleHitSize,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          dragStartBehavior: DragStartBehavior.down,
+          onPanDown: (details) {
+            widget.onEnsureSelected();
+            developer.log(
+              'drag panDown position=${details.localPosition}',
+              name: 'selection.${widget.item.id}',
+            );
+            _dragLastLocalPosition = details.localPosition;
+            _dragLastGlobalPosition = details.globalPosition;
+          },
+          onTapDown: (_) {
+            widget.onEnsureSelected();
+            developer.log(
+              'drag handle tap',
+              name: 'selection.${widget.item.id}',
+            );
+          },
+          onPanStart: (details) {
+            widget.onEnsureSelected();
+            _dragging = true;
+            _dragAnchorWorldOrigin = widget.layout.anchorWorld;
+            _dragAnchorDelta = Offset.zero;
+            developer.log(
+              'drag start anchor=$_dragAnchorWorldOrigin',
+              name: 'selection.${widget.item.id}',
+            );
+            _dragLastLocalPosition = details.localPosition;
+            _dragLastGlobalPosition = details.globalPosition;
+          },
+          onPanUpdate: (details) {
+            final currentGlobal = details.globalPosition;
+            final lastGlobal = _dragLastGlobalPosition ?? currentGlobal;
+            final delta = currentGlobal - lastGlobal;
+            _dragLastLocalPosition = details.localPosition;
+            _dragLastGlobalPosition = currentGlobal;
 
-          widget.onPositionChanged(normalized);
-        },
-        onPanEnd: (_) {
-          _dragging = false;
-          _dragAnchorWorldOrigin = widget.layout.anchorWorld;
-          _initialTopLeft = widget.layout.topLeft;
-          _dragAnchorDelta = Offset.zero;
-          developer.log(
-            'drag end anchor=$_dragAnchorWorldOrigin',
-            name: 'selection.${widget.item.id}',
-          );
-        },
-        child: const _HandleVisual(
-          icon: Icons.open_with_rounded,
-          size: _handleSize,
+            _dragAnchorDelta += delta;
+            developer.log(
+              'drag delta=$_dragAnchorDelta (step=$delta)',
+              name: 'selection.${widget.item.id}',
+            );
+            final newAnchorWorld = _dragAnchorWorldOrigin + _dragAnchorDelta;
+            final normalized = Offset(
+              newAnchorWorld.dx / widget.roomSize.width,
+              newAnchorWorld.dy / widget.roomSize.height,
+            );
+            developer.log(
+              'drag normalized=$normalized room=${widget.roomSize}',
+              name: 'selection.${widget.item.id}',
+            );
+
+            widget.onPositionChanged(normalized);
+          },
+          onPanEnd: (_) {
+            _dragging = false;
+            _dragAnchorWorldOrigin = widget.layout.anchorWorld;
+            _initialTopLeft = widget.layout.topLeft;
+            _dragAnchorDelta = Offset.zero;
+            _dragLastLocalPosition = null;
+            _dragLastGlobalPosition = null;
+            developer.log(
+              'drag end anchor=$_dragAnchorWorldOrigin',
+              name: 'selection.${widget.item.id}',
+            );
+          },
+          onPanCancel: () {
+            _dragging = false;
+            _dragAnchorDelta = Offset.zero;
+            _dragLastLocalPosition = null;
+            _dragLastGlobalPosition = null;
+          },
+          child: const Center(
+            child: _HandleVisual(
+              icon: Icons.open_with_rounded,
+              size: _handleSize,
+            ),
+          ),
         ),
       ),
     );
@@ -818,93 +920,129 @@ class _SelectionFrameState extends State<_SelectionFrame> {
   Widget _buildResizeHandle() {
     const padding = _SelectionFrame.padding;
 
-    final left = padding.left + widget.contentSize.width - _handleSize * 0.5;
-    final top = padding.top + widget.contentSize.height - _handleSize * 0.5;
+    final left =
+        padding.left +
+        widget.contentSize.width -
+        _handleSize * 0.5 -
+        _handleHitInset;
+    final top =
+        padding.top +
+        widget.contentSize.height -
+        _handleSize * 0.5 -
+        _handleHitInset;
 
     return Positioned(
       left: left,
       top: top,
-      child: Listener(
-        behavior: HitTestBehavior.opaque,
-        onPointerDown: (event) {
-          widget.onEnsureSelected();
-          _resizing = true;
-          _initialScale = widget.currentScale;
-          _initialWidth = widget.layout.size.width;
-          _initialHeight = widget.layout.size.height;
-          _initialTopLeft = widget.layout.topLeft;
-          _baseWidth = _initialScale == 0
-              ? _initialWidth
-              : _initialWidth / _initialScale;
-          _baseHeight = _initialScale == 0
-              ? _initialHeight
-              : _initialHeight / _initialScale;
-          _resizeAccumulated = Offset.zero;
-        },
-        onPointerMove: (event) {
-          if (!_resizing) return;
-          final rawDelta = event.delta;
-          final unrotatedDelta = _rotateDeltaToUnrotated(
-            rawDelta,
-            widget.rotation,
-          );
-          _resizeAccumulated += unrotatedDelta;
+      child: SizedBox(
+        width: _handleHitSize,
+        height: _handleHitSize,
+        child: Listener(
+          behavior: HitTestBehavior.opaque,
+          onPointerDown: (event) {
+            widget.onEnsureSelected();
+            _resizing = true;
+            _initialScale = widget.currentScale;
+            _initialWidth = widget.layout.size.width;
+            _initialHeight = widget.layout.size.height;
+            _initialTopLeft = widget.layout.topLeft;
+            _baseWidth = _initialScale == 0
+                ? _initialWidth
+                : _initialWidth / _initialScale;
+            _baseHeight = _initialScale == 0
+                ? _initialHeight
+                : _initialHeight / _initialScale;
+            _resizeAccumulated = Offset.zero;
+            _syncContentMetrics(
+              topLeftOverride: _initialTopLeft,
+              sizeOverride: Size(_initialWidth, _initialHeight),
+            );
+          },
+          onPointerMove: (event) {
+            if (!_resizing) return;
+            final rawDelta = event.delta;
+            final unrotatedDelta = _rotateDeltaToUnrotated(
+              rawDelta,
+              widget.rotation,
+            );
+            _resizeAccumulated += unrotatedDelta;
 
-          final targetWidth = (_initialWidth + _resizeAccumulated.dx).clamp(
-            24,
-            widget.roomSize.width,
-          );
-          final targetHeight = (_initialHeight + _resizeAccumulated.dy).clamp(
-            24,
-            widget.roomSize.height,
-          );
+            final targetWidth = (_initialWidth + _resizeAccumulated.dx).clamp(
+              24,
+              widget.roomSize.width,
+            );
+            final targetHeight = (_initialHeight + _resizeAccumulated.dy).clamp(
+              24,
+              widget.roomSize.height,
+            );
 
-          final widthRatio = targetWidth / _initialWidth;
-          final heightRatio = targetHeight / _initialHeight;
-          final ratio = ((widthRatio + heightRatio) / 2).clamp(0.01, 100.0);
+            final widthRatio = targetWidth / _initialWidth;
+            final heightRatio = targetHeight / _initialHeight;
+            final ratio = ((widthRatio + heightRatio) / 2).clamp(0.01, 100.0);
 
-          final nextScale = (_initialScale * ratio).clamp(
-            _InteractiveRoomAsset.minScale,
-            _InteractiveRoomAsset.maxScale,
-          );
+            final nextScale = (_initialScale * ratio).clamp(
+              _InteractiveRoomAsset.minScale,
+              _InteractiveRoomAsset.maxScale,
+            );
 
-          final newWidth = _baseWidth * nextScale;
-          final newHeight = _baseHeight * nextScale;
+            final newWidth = _baseWidth * nextScale;
+            final newHeight = _baseHeight * nextScale;
+            final safeInitialScale = _initialScale == 0 ? 1.0 : _initialScale;
+            final scaleRatio = nextScale / safeInitialScale;
+            final newSize = Size(newWidth, newHeight);
+            final newContentLocal = _initialContentLocal * scaleRatio;
+            final newTopLeft = _resolveTopLeftFromPivot(
+              pivotWorld: _initialContentTopLeftWorld,
+              size: newSize,
+              pivotLocal: newContentLocal,
+              rotation: widget.rotation,
+            );
 
-          final offset = anchorOffset(
-            anchor: widget.item.anchor,
-            width: newWidth,
-            height: newHeight,
-          );
-          final anchorWorld = _initialTopLeft + offset;
-          final normalized = Offset(
-            anchorWorld.dx / widget.roomSize.width,
-            anchorWorld.dy / widget.roomSize.height,
-          );
+            final offset = anchorOffset(
+              anchor: widget.item.anchor,
+              width: newWidth,
+              height: newHeight,
+            );
+            final anchorWorld = newTopLeft + offset;
+            final normalized = Offset(
+              anchorWorld.dx / widget.roomSize.width,
+              anchorWorld.dy / widget.roomSize.height,
+            );
 
-          widget.onScaleChanged(nextScale);
-          widget.onPositionChanged(normalized);
-        },
-        onPointerUp: (event) {
-          if (!_resizing) return;
-          _resizing = false;
-          _initialScale = widget.currentScale;
-          _initialWidth = widget.layout.size.width;
-          _initialHeight = widget.layout.size.height;
-          _initialTopLeft = widget.layout.topLeft;
-          final safeScale = _initialScale == 0 ? 1.0 : _initialScale;
-          _baseWidth = _initialWidth / safeScale;
-          _baseHeight = _initialHeight / safeScale;
-          _resizeAccumulated = Offset.zero;
-        },
-        onPointerCancel: (event) {
-          if (!_resizing) return;
-          _resizing = false;
-          _resizeAccumulated = Offset.zero;
-        },
-        child: const _HandleVisual(
-          icon: Icons.zoom_out_map_rounded,
-          size: _handleSize,
+            widget.onScaleChanged(nextScale);
+            widget.onPositionChanged(normalized);
+          },
+          onPointerUp: (event) {
+            if (!_resizing) return;
+            _resizing = false;
+            _initialScale = widget.currentScale;
+            _initialWidth = widget.layout.size.width;
+            _initialHeight = widget.layout.size.height;
+            _initialTopLeft = widget.layout.topLeft;
+            final safeScale = _initialScale == 0 ? 1.0 : _initialScale;
+            _baseWidth = _initialWidth / safeScale;
+            _baseHeight = _initialHeight / safeScale;
+            _resizeAccumulated = Offset.zero;
+            _syncContentMetrics(
+              topLeftOverride: _initialTopLeft,
+              sizeOverride: Size(_initialWidth, _initialHeight),
+            );
+          },
+          onPointerCancel: (event) {
+            if (!_resizing) return;
+            _resizing = false;
+            _resizeAccumulated = Offset.zero;
+            _syncContentMetrics(
+              topLeftOverride: widget.layout.topLeft,
+              sizeOverride: widget.layout.size,
+            );
+          },
+          child: const Center(
+            child: _HandleVisual(
+              icon: Icons.zoom_out_map_rounded,
+              size: _handleSize,
+            ),
+          ),
         ),
       ),
     );
@@ -1036,7 +1174,6 @@ class _InteractiveRoomAssetState extends State<_InteractiveRoomAsset> {
   ImageStream? _imageStream;
   ImageStreamListener? _imageListener;
   ui.Image? _decodedImage;
-  ByteData? _decodedBytes;
   Rect? _lastContentBounds;
 
   @override
@@ -1057,9 +1194,7 @@ class _InteractiveRoomAssetState extends State<_InteractiveRoomAsset> {
     if (oldWidget.item.assetName != widget.item.assetName) {
       _resolveImage();
     }
-    if (widget.onContentBoundsChanged != null &&
-        _decodedImage != null &&
-        _decodedBytes != null) {
+    if (widget.onContentBoundsChanged != null && _decodedImage != null) {
       _maybeNotifyContentBounds();
     }
     if (!_isInteracting) {
@@ -1081,81 +1216,84 @@ class _InteractiveRoomAssetState extends State<_InteractiveRoomAsset> {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.translucent,
-      onTapDown: (details) {
-        if (hitTestLocal(details.localPosition)) {
+    return _HitTestRegion(
+      hitTest: hitTestLocal,
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTapDown: (details) {
+          if (hitTestLocal(details.localPosition)) {
+            widget.onSelected();
+          } else {
+            developer.log(
+              'tap ignored at ${details.localPosition}',
+              name: 'selection.${widget.item.id}',
+            );
+          }
+        },
+        onScaleStart: (details) {
+          final local = details.localFocalPoint;
+          if (!hitTestLocal(local)) {
+            _interactionActive = false;
+            return;
+          }
           widget.onSelected();
-        } else {
-          developer.log(
-            'tap ignored at ${details.localPosition}',
-            name: 'selection.${widget.item.id}',
+          _interactionActive = true;
+          _isInteracting = true;
+          _startPosition = widget.normalizedPosition;
+          _startScale = widget.scale;
+          _startRotation = widget.rotation;
+          _startFocalNormalized = _computeFocalNormalized(local);
+          _pivotDelta = _startPosition - _startFocalNormalized;
+          _startGlobalFocalPoint = details.focalPoint;
+        },
+        onScaleUpdate: (details) {
+          if (!_interactionActive) return;
+          final translation = details.focalPoint - _startGlobalFocalPoint;
+          final normalizedTranslation = Offset(
+            translation.dx / widget.roomSize.width,
+            translation.dy / widget.roomSize.height,
           );
-        }
-      },
-      onScaleStart: (details) {
-        final local = details.localFocalPoint;
-        if (!hitTestLocal(local)) {
+
+          final nextScale = (_startScale * details.scale).clamp(
+            _InteractiveRoomAsset.minScale,
+            _InteractiveRoomAsset.maxScale,
+          );
+          widget.onScaleChanged(nextScale);
+
+          final rawRotation = _startRotation + details.rotation;
+          final snappedRotation = _applySnap(rawRotation);
+          widget.onRotationChanged(snappedRotation);
+
+          final scaleRatio = _startScale == 0 ? 1.0 : nextScale / _startScale;
+          final pivotNormalized = _startFocalNormalized + normalizedTranslation;
+          final anchorNormalized = pivotNormalized + (_pivotDelta * scaleRatio);
+          widget.onPositionChanged(anchorNormalized);
+        },
+        onScaleEnd: (_) {
+          if (!_interactionActive) return;
           _interactionActive = false;
-          return;
-        }
-        widget.onSelected();
-        _interactionActive = true;
-        _isInteracting = true;
-        _startPosition = widget.normalizedPosition;
-        _startScale = widget.scale;
-        _startRotation = widget.rotation;
-        _startFocalNormalized = _computeFocalNormalized(local);
-        _pivotDelta = _startPosition - _startFocalNormalized;
-        _startGlobalFocalPoint = details.focalPoint;
-      },
-      onScaleUpdate: (details) {
-        if (!_interactionActive) return;
-        final translation = details.focalPoint - _startGlobalFocalPoint;
-        final normalizedTranslation = Offset(
-          translation.dx / widget.roomSize.width,
-          translation.dy / widget.roomSize.height,
-        );
-
-        final nextScale = (_startScale * details.scale).clamp(
-          _InteractiveRoomAsset.minScale,
-          _InteractiveRoomAsset.maxScale,
-        );
-        widget.onScaleChanged(nextScale);
-
-        final rawRotation = _startRotation + details.rotation;
-        final snappedRotation = _applySnap(rawRotation);
-        widget.onRotationChanged(snappedRotation);
-
-        final scaleRatio = _startScale == 0 ? 1.0 : nextScale / _startScale;
-        final pivotNormalized = _startFocalNormalized + normalizedTranslation;
-        final anchorNormalized = pivotNormalized + (_pivotDelta * scaleRatio);
-        widget.onPositionChanged(anchorNormalized);
-      },
-      onScaleEnd: (_) {
-        if (!_interactionActive) return;
-        _interactionActive = false;
-        _isInteracting = false;
-        final snappedRotation = _applySnap(widget.rotation);
-        widget.onRotationChanged(snappedRotation);
-        _startPosition = widget.normalizedPosition;
-        _startScale = widget.scale;
-        _startRotation = snappedRotation;
-        _startFocalNormalized = _computeFocalNormalized(Offset.zero);
-        _pivotDelta = _startPosition - _startFocalNormalized;
-      },
-      child: Semantics(
-        label: widget.item.semanticLabel,
-        container: true,
-        child: SizedBox(
-          width: widget.layout.size.width,
-          height: widget.layout.size.height,
-          child: Transform.rotate(
-            angle: widget.rotation,
-            alignment: Alignment.center,
-            child: _RoomAssetImage(
-              assetName: widget.item.assetName,
-              semanticLabel: widget.item.semanticLabel,
+          _isInteracting = false;
+          final snappedRotation = _applySnap(widget.rotation);
+          widget.onRotationChanged(snappedRotation);
+          _startPosition = widget.normalizedPosition;
+          _startScale = widget.scale;
+          _startRotation = snappedRotation;
+          _startFocalNormalized = _computeFocalNormalized(Offset.zero);
+          _pivotDelta = _startPosition - _startFocalNormalized;
+        },
+        child: Semantics(
+          label: widget.item.semanticLabel,
+          container: true,
+          child: SizedBox(
+            width: widget.layout.size.width,
+            height: widget.layout.size.height,
+            child: Transform.rotate(
+              angle: widget.rotation,
+              alignment: Alignment.center,
+              child: _RoomAssetImage(
+                assetName: widget.item.assetName,
+                semanticLabel: widget.item.semanticLabel,
+              ),
             ),
           ),
         ),
@@ -1172,9 +1310,8 @@ class _InteractiveRoomAssetState extends State<_InteractiveRoomAsset> {
     }
 
     _imageStream = stream;
-    _imageListener = ImageStreamListener((imageInfo, _) async {
+    _imageListener = ImageStreamListener((imageInfo, _) {
       _decodedImage = imageInfo.image;
-      _decodedBytes = await imageInfo.image.toByteData();
       _maybeNotifyContentBounds();
       if (mounted) {
         setState(() {});
@@ -1186,12 +1323,11 @@ class _InteractiveRoomAssetState extends State<_InteractiveRoomAsset> {
 
   void _maybeNotifyContentBounds() {
     final image = _decodedImage;
-    final bytes = _decodedBytes;
     final callback = widget.onContentBoundsChanged;
 
-    if (image == null || bytes == null || callback == null) return;
+    if (image == null || callback == null) return;
 
-    final bounds = _calculateContentBounds(image, bytes);
+    final bounds = _calculateContentBounds(image);
 
     if (_lastContentBounds != null &&
         _rectsClose(_lastContentBounds!, bounds)) {
@@ -1202,68 +1338,14 @@ class _InteractiveRoomAssetState extends State<_InteractiveRoomAsset> {
     callback(bounds);
   }
 
-  Rect _calculateContentBounds(ui.Image image, ByteData bytes) {
-    final width = image.width;
-    final height = image.height;
-
-    var minX = width;
-    var minY = height;
-    var maxX = -1;
-    var maxY = -1;
-
-    final totalLength = bytes.lengthInBytes;
-    final rowBytes = totalLength ~/ height;
-    final lastValidIndex = totalLength - 4;
-
-    for (var y = 0; y < height; y++) {
-      for (var x = 0; x < width; x++) {
-        final offset = y * rowBytes + x * 4;
-        if (offset > lastValidIndex) continue;
-        if (offset + 3 > lastValidIndex) continue;
-        final alpha = bytes.getUint8(offset + 3);
-
-        if (alpha > 10) {
-          if (x < minX) minX = x;
-          if (x > maxX) maxX = x;
-          if (y < minY) minY = y;
-          if (y > maxY) maxY = y;
-        }
-      }
-    }
-
-    if (maxX < minX || maxY < minY) {
-      return Rect.fromLTWH(
-        0,
-        0,
-        widget.layout.size.width,
-        widget.layout.size.height,
-      );
-    }
-
-    final imageSize = Size(width.toDouble(), height.toDouble());
-    final fittedSizes = applyBoxFit(
-      BoxFit.contain,
-      imageSize,
-      widget.layout.size,
-    );
+  Rect _calculateContentBounds(ui.Image image) {
+    final layoutSize = widget.layout.size;
+    final imageSize = Size(image.width.toDouble(), image.height.toDouble());
+    final fittedSizes = applyBoxFit(BoxFit.contain, imageSize, layoutSize);
     final renderSize = fittedSizes.destination;
-    final offsetX = (widget.layout.size.width - renderSize.width) / 2;
-    final offsetY = (widget.layout.size.height - renderSize.height) / 2;
-    final scaleX = renderSize.width / width;
-    final scaleY = renderSize.height / height;
-
-    final left = (offsetX + minX * scaleX).clamp(0.0, widget.layout.size.width);
-    final top = (offsetY + minY * scaleY).clamp(0.0, widget.layout.size.height);
-    final right = (offsetX + (maxX + 1) * scaleX).clamp(
-      0.0,
-      widget.layout.size.width,
-    );
-    final bottom = (offsetY + (maxY + 1) * scaleY).clamp(
-      0.0,
-      widget.layout.size.height,
-    );
-
-    return Rect.fromLTRB(left, top, right, bottom);
+    final offsetX = (layoutSize.width - renderSize.width) / 2;
+    final offsetY = (layoutSize.height - renderSize.height) / 2;
+    return Rect.fromLTWH(offsetX, offsetY, renderSize.width, renderSize.height);
   }
 
   bool _rectsClose(Rect a, Rect b, [double epsilon = 0.001]) {
@@ -1327,40 +1409,6 @@ class _InteractiveRoomAssetState extends State<_InteractiveRoomAsset> {
     return angle;
   }
 
-  bool _isOpaqueHit(Offset localPosition) {
-    final image = _decodedImage;
-    final bytes = _decodedBytes;
-    if (image == null || bytes == null) {
-      return true;
-    }
-
-    final destinationSize = widget.layout.size;
-    final imageSize = Size(image.width.toDouble(), image.height.toDouble());
-    final fittedSizes = applyBoxFit(BoxFit.contain, imageSize, destinationSize);
-    final renderSize = fittedSizes.destination;
-
-    final offsetX = (destinationSize.width - renderSize.width) / 2;
-    final offsetY = (destinationSize.height - renderSize.height) / 2;
-
-    final dx = localPosition.dx - offsetX;
-    final dy = localPosition.dy - offsetY;
-
-    if (dx < 0 || dy < 0 || dx > renderSize.width || dy > renderSize.height) {
-      return false;
-    }
-
-    final u = (dx / renderSize.width) * image.width;
-    final v = (dy / renderSize.height) * image.height;
-
-    final px = u.clamp(0, image.width - 1).floor();
-    final py = v.clamp(0, image.height - 1).floor();
-
-    final byteOffset = (py * image.width + px) * 4;
-    final alpha = bytes.getUint8(byteOffset + 3);
-
-    return alpha > 10;
-  }
-
   bool hitTestLocal(Offset localPosition) {
     if (localPosition.dx < 0 ||
         localPosition.dy < 0 ||
@@ -1375,7 +1423,50 @@ class _InteractiveRoomAssetState extends State<_InteractiveRoomAsset> {
       return bounds.contains(unrotated);
     }
 
-    return _isOpaqueHit(unrotated);
+    final width = widget.layout.size.width;
+    final height = widget.layout.size.height;
+    return unrotated.dx >= 0 &&
+        unrotated.dy >= 0 &&
+        unrotated.dx <= width &&
+        unrotated.dy <= height;
+  }
+}
+
+typedef _HitTestPredicate = bool Function(Offset position);
+
+class _HitTestRegion extends SingleChildRenderObjectWidget {
+  const _HitTestRegion({
+    required this.hitTest,
+    required super.child,
+  });
+
+  final _HitTestPredicate hitTest;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) {
+    return _HitTestRegionRenderBox(hitTest);
+  }
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    covariant _HitTestRegionRenderBox renderObject,
+  ) {
+    renderObject.hitTestPredicate = hitTest;
+  }
+}
+
+class _HitTestRegionRenderBox extends RenderProxyBox {
+  _HitTestRegionRenderBox(this.hitTestPredicate);
+
+  _HitTestPredicate hitTestPredicate;
+
+  @override
+  bool hitTest(BoxHitTestResult result, {required Offset position}) {
+    if (!hitTestPredicate(position)) {
+      return false;
+    }
+    return super.hitTest(result, position: position);
   }
 }
 

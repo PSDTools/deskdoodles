@@ -9,6 +9,12 @@
             "type": "dart",
             "request": "launch",
             "program": "lib/main.dart"
+        },
+        {
+            "name": "Crop Sprites",
+            "type": "dart",
+            "request": "launch",
+            "program": "tool/crop_sprites.dart"
         }
     ]
 }

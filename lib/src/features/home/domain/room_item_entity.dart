@@ -64,6 +64,7 @@ sealed class RoomItem with _$RoomItem {
     required Size availableSize,
     required Offset normalizedPosition,
     required double scale,
+    double? preferredAspectRatio,
   }) {
     final baseWidth = widthFactor != null
         ? availableSize.width * widthFactor!
@@ -75,13 +76,29 @@ sealed class RoomItem with _$RoomItem {
     var width = baseWidth != null ? baseWidth * scale : null;
     var height = baseHeight != null ? baseHeight * scale : null;
 
-    // If only one dimension is known, infer the other to keep aspect-ish ratio.
+    final resolvedAspectRatio = () {
+      if (preferredAspectRatio != null && preferredAspectRatio > 0) {
+        return preferredAspectRatio;
+      }
+      if (baseWidth != null && baseHeight != null && baseHeight != 0) {
+        return baseWidth / baseHeight;
+      }
+      return null;
+    }();
+
     if (width == null && height != null) {
-      width = height;
+      width = resolvedAspectRatio != null && resolvedAspectRatio > 0
+          ? height * resolvedAspectRatio
+          : height;
     } else if (height == null && width != null) {
-      height = width;
+      height = resolvedAspectRatio != null && resolvedAspectRatio > 0
+          ? width / resolvedAspectRatio
+          : width;
     } else {
-      assert(false, 'At least one dimension must be known here.');
+      assert(
+        width != null && height != null,
+        'At least one dimension must be known here.',
+      );
     }
 
     final safeWidth = width ?? 0;
